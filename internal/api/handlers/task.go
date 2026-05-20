@@ -19,6 +19,7 @@ type TaskStore interface {
 	Cancel(ctx context.Context, queueName string, taskID string) error
 	ClaimForWorker(ctx context.Context, workerID string, queueName string, leaseDuration time.Duration) (model.ClaimedTask, bool, error)
 	Heartbeat(ctx context.Context, taskID string, workerID string) error
+	Ack(ctx context.Context, taskID string, workerID string, result []byte) error
 }
 
 type TaskHandler struct {

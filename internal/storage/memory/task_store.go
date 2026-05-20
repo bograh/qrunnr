@@ -211,7 +211,37 @@ func (s *TaskStore) MarkExecuting(ctx context.Context, taskID string, workerID s
 }
 
 func (s *TaskStore) Ack(ctx context.Context, taskID string, workerID string, result []byte) error {
-	return model.ErrNotImplemented
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	task, exists := s.tasks[taskID]
+	if !exists {
+		return model.ErrTaskNotFound
+	}
+	if task.ClaimedBy == nil || *task.ClaimedBy != workerID {
+		return model.ErrTaskNotOwned
+	}
+	if task.Status != model.TaskStatusExecuting {
+		if task.Status == model.TaskStatusRetry {
+			return model.ErrTaskLeaseExpired
+		}
+		return model.ErrTaskInvalidStatus
+	}
+
+	task.Status = model.TaskStatusDone
+	task.Result = result
+	s.tasks[taskID] = task
+	delete(s.leases, taskID)
+	if queueName, ok := s.queueStore.getNameByID(task.QueueID); ok {
+		s.queueStore.removeActiveTask(queueName)
+	}
+	return nil
 }
 
 func (s *TaskStore) Nack(ctx context.Context, taskID string, workerID string, errMessage string) error {

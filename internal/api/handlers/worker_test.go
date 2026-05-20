@@ -210,10 +210,75 @@ func TestWorkerHeartbeatTaskNotFound(t *testing.T) {
 	}
 }
 
+func TestWorkerAck(t *testing.T) {
+	_, taskStore, _, _, workerHandler, claimed := setupClaimedTask(t)
+
+	rec := postAck(workerHandler, `{"task_id":"`+claimed.ID+`","worker_id":"worker-1","result":{"ok":true}}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	task, err := taskStore.Get(context.Background(), "email_jobs", claimed.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if task.Status != model.TaskStatusDone {
+		t.Fatalf("expected status %q, got %q", model.TaskStatusDone, task.Status)
+	}
+	if string(task.Result) != `{"ok":true}` {
+		t.Fatalf("expected result to be stored, got %s", string(task.Result))
+	}
+}
+
+func TestWorkerAckWrongOwner(t *testing.T) {
+	_, _, _, _, workerHandler, claimed := setupClaimedTask(t)
+
+	rec := postAck(workerHandler, `{"task_id":"`+claimed.ID+`","worker_id":"worker-2"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusForbidden, rec.Code, rec.Body.String())
+	}
+}
+
+func TestWorkerAckLeaseExpired(t *testing.T) {
+	workerHandler := NewWorkerHandler(expiredAckStore{})
+
+	rec := postAck(workerHandler, `{"task_id":"task-1","worker_id":"worker-1"}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusConflict, rec.Code, rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("lease expired")) {
+		t.Fatalf("expected lease expired message, got %s", rec.Body.String())
+	}
+}
+
+func TestDoneTaskIsNotRedispatched(t *testing.T) {
+	_, taskStore, _, _, workerHandler, claimed := setupClaimedTask(t)
+
+	rec := postAck(workerHandler, `{"task_id":"`+claimed.ID+`","worker_id":"worker-1"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected ack status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	tasks, err := taskStore.ClaimPending(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("claim pending: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("expected done task not to be redispatched, got %d tasks", len(tasks))
+	}
+}
+
 func postClaim(handler *WorkerHandler, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/workers/claim", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 	handler.ClaimTask(rec, req)
+	return rec
+}
+
+func postAck(handler *WorkerHandler, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/workers/ack", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+	handler.Ack(rec, req)
 	return rec
 }
 
@@ -252,4 +317,18 @@ func setupClaimedTask(t *testing.T) (*memory.QueueStore, *memory.TaskStore, *Que
 	}
 
 	return queueStore, taskStore, queueHandler, taskHandler, workerHandler, claimed
+}
+
+type expiredAckStore struct{}
+
+func (s expiredAckStore) ClaimForWorker(ctx context.Context, workerID string, queueName string, leaseDuration time.Duration) (model.ClaimedTask, bool, error) {
+	return model.ClaimedTask{}, false, model.ErrNotImplemented
+}
+
+func (s expiredAckStore) Heartbeat(ctx context.Context, taskID string, workerID string) error {
+	return model.ErrNotImplemented
+}
+
+func (s expiredAckStore) Ack(ctx context.Context, taskID string, workerID string, result []byte) error {
+	return model.ErrTaskLeaseExpired
 }

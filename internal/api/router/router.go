@@ -85,3 +85,7 @@ func (s unavailableTaskStore) ClaimForWorker(ctx context.Context, workerID strin
 func (s unavailableTaskStore) Heartbeat(ctx context.Context, taskID string, workerID string) error {
 	return model.ErrNotImplemented
 }
+
+func (s unavailableTaskStore) Ack(ctx context.Context, taskID string, workerID string, result []byte) error {
+	return model.ErrNotImplemented
+}
