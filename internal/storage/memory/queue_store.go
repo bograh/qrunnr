@@ -9,13 +9,15 @@ import (
 )
 
 type QueueStore struct {
-	mu     sync.RWMutex
-	queues map[string]model.Queue
+	mu          sync.RWMutex
+	queues      map[string]model.Queue
+	activeTasks map[string]int
 }
 
 func NewQueueStore() *QueueStore {
 	return &QueueStore{
-		queues: make(map[string]model.Queue),
+		queues:      make(map[string]model.Queue),
+		activeTasks: make(map[string]int),
 	}
 }
 
@@ -89,7 +91,17 @@ func (s *QueueStore) Delete(ctx context.Context, name string) error {
 	if _, exists := s.queues[name]; !exists {
 		return model.ErrQueueNotFound
 	}
+	if s.activeTasks[name] > 0 {
+		return model.ErrQueueHasActiveTasks
+	}
 
 	delete(s.queues, name)
 	return nil
+}
+
+func (s *QueueStore) addActiveTask(queueName string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.activeTasks[queueName]++
 }

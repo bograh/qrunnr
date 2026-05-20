@@ -13,6 +13,7 @@ var ErrNotImplemented = errors.New("not implemented")
 var ErrQueueAlreadyExists = errors.New("queue already exists")
 var ErrQueueNotFound = errors.New("queue not found")
 var ErrQueueHasActiveTasks = errors.New("queue has active tasks")
+var ErrTaskNotFound = errors.New("task not found")
 
 var queueNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
@@ -74,19 +75,32 @@ const (
 )
 
 type Task struct {
-	ID          string
-	QueueID     string
-	Payload     json.RawMessage
-	Status      TaskStatus
-	Priority    int
-	ScheduledAt time.Time
-	ClaimedAt   *time.Time
-	ClaimedBy   *string
-	HeartbeatAt *time.Time
-	Attempts    int
-	LastError   *string
-	Result      json.RawMessage
-	CreatedAt   time.Time
+	ID          string          `json:"id"`
+	QueueID     string          `json:"queue_id"`
+	Payload     json.RawMessage `json:"payload"`
+	Status      TaskStatus      `json:"status"`
+	Priority    int             `json:"priority"`
+	ScheduledAt time.Time       `json:"scheduled_at"`
+	ClaimedAt   *time.Time      `json:"claimed_at"`
+	ClaimedBy   *string         `json:"claimed_by"`
+	HeartbeatAt *time.Time      `json:"heartbeat_at"`
+	Attempts    int             `json:"attempts"`
+	LastError   *string         `json:"last_error"`
+	Result      json.RawMessage `json:"result"`
+	CreatedAt   time.Time       `json:"created_at"`
+}
+
+func NewImmediateTask(queueID string, payload json.RawMessage) Task {
+	now := time.Now().UTC()
+	return Task{
+		ID:          newID(),
+		QueueID:     queueID,
+		Payload:     payload,
+		Status:      TaskStatusPending,
+		Priority:    5,
+		ScheduledAt: now,
+		CreatedAt:   now,
+	}
 }
 
 type DeadLetterTask struct {
