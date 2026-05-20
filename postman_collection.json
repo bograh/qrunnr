@@ -1,0 +1,444 @@
+{
+  "info": {
+    "_postman_id": "6f8d6a37-8d3f-4ec0-92f1-5d4e9a2d0001",
+    "name": "TaskForge API",
+    "description": "Postman collection for the TaskForge queue, task, worker, DLQ, stats, and metrics API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "queueName",
+      "value": "email_jobs"
+    },
+    {
+      "key": "taskId",
+      "value": ""
+    },
+    {
+      "key": "dlqTaskId",
+      "value": ""
+    },
+    {
+      "key": "workerId",
+      "value": "worker-1"
+    }
+  ],
+  "item": [
+    {
+      "name": "Queues",
+      "item": [
+        {
+          "name": "Create Queue",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{queueName}}\",\n  \"max_retries\": 5,\n  \"rate_limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/queues",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "queues"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Queues",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/queues",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "queues"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Patch Queue Rate Limit",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rate_limit\": 3\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/queues/{{queueName}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "queues",
+                "{{queueName}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Queue",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/queues/{{queueName}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "queues",
+                "{{queueName}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tasks",
+      "item": [
+        {
+          "name": "Enqueue Immediate Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payload\": {\n    \"user_id\": \"abc123\",\n    \"action\": \"send_welcome_email\"\n  },\n  \"priority\": 5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/queues/{{queueName}}/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "queues",
+                "{{queueName}}",
+                "tasks"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Enqueue Delayed High Priority Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payload\": {\n    \"user_id\": \"abc123\",\n    \"action\": \"send_welcome_email\"\n  },\n  \"scheduled_at\": \"2026-05-20T12:00:00Z\",\n  \"priority\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/queues/{{queueName}}/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "queues",
+                "{{queueName}}",
+                "tasks"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Task",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/queues/{{queueName}}/tasks/{{taskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "queues",
+                "{{queueName}}",
+                "tasks",
+                "{{taskId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cancel Task",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/queues/{{queueName}}/tasks/{{taskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "queues",
+                "{{queueName}}",
+                "tasks",
+                "{{taskId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Workers",
+      "item": [
+        {
+          "name": "Claim Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"worker_id\": \"{{workerId}}\",\n  \"queue\": \"{{queueName}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/workers/claim",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "workers",
+                "claim"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Heartbeat",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"{{taskId}}\",\n  \"worker_id\": \"{{workerId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/workers/heartbeat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "workers",
+                "heartbeat"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ack Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"{{taskId}}\",\n  \"worker_id\": \"{{workerId}}\",\n  \"result\": {\n    \"ok\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/workers/ack",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "workers",
+                "ack"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Nack Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"{{taskId}}\",\n  \"worker_id\": \"{{workerId}}\",\n  \"error\": \"downstream timeout\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/workers/nack",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "workers",
+                "nack"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Workers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/workers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "workers"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dead Letter Queue",
+      "item": [
+        {
+          "name": "List DLQ",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/queues/{{queueName}}/dlq",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "queues",
+                "{{queueName}}",
+                "dlq"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Replay DLQ Task",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/queues/{{queueName}}/dlq/{{dlqTaskId}}/replay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "queues",
+                "{{queueName}}",
+                "dlq",
+                "{{dlqTaskId}}",
+                "replay"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete DLQ Task",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/queues/{{queueName}}/dlq/{{dlqTaskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "queues",
+                "{{queueName}}",
+                "dlq",
+                "{{dlqTaskId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stats and Metrics",
+      "item": [
+        {
+          "name": "Get Queue Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/queues/{{queueName}}/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "queues",
+                "{{queueName}}",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "metrics"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
