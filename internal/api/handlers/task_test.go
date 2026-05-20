@@ -239,6 +239,94 @@ func TestGetTaskIncludesScheduledAt(t *testing.T) {
 	}
 }
 
+func TestEnqueueTaskDefaultPriority(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+
+	rec := postTask(taskHandler, "email_jobs", `{"payload":{"action":"send_email"}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, rec.Code, rec.Body.String())
+	}
+
+	var task model.Task
+	if err := json.NewDecoder(rec.Body).Decode(&task); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if task.Priority != 5 {
+		t.Fatalf("expected default priority 5, got %d", task.Priority)
+	}
+}
+
+func TestEnqueueTaskRejectsInvalidPriority(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+
+	tests := []string{
+		`{"payload":{"action":"send_email"},"priority":0}`,
+		`{"payload":{"action":"send_email"},"priority":11}`,
+	}
+
+	for _, body := range tests {
+		t.Run(body, func(t *testing.T) {
+			rec := postTask(taskHandler, "email_jobs", body)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected status %d, got %d: %s", http.StatusBadRequest, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestHighPriorityTaskIsClaimedBeforeLowPriorityTask(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+
+	low := postTask(taskHandler, "email_jobs", `{"payload":{"action":"low"},"priority":10}`)
+	if low.Code != http.StatusCreated {
+		t.Fatalf("expected low priority create status %d, got %d", http.StatusCreated, low.Code)
+	}
+	high := postTask(taskHandler, "email_jobs", `{"payload":{"action":"high"},"priority":1}`)
+	if high.Code != http.StatusCreated {
+		t.Fatalf("expected high priority create status %d, got %d", http.StatusCreated, high.Code)
+	}
+
+	var highTask model.Task
+	if err := json.NewDecoder(high.Body).Decode(&highTask); err != nil {
+		t.Fatalf("decode high priority response: %v", err)
+	}
+
+	tasks, err := taskStore.ClaimPending(context.Background(), 2)
+	if err != nil {
+		t.Fatalf("claim pending: %v", err)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("expected 2 claimable tasks, got %d", len(tasks))
+	}
+	if tasks[0].ID != highTask.ID {
+		t.Fatalf("expected high priority task first, got task %s with priority %d", tasks[0].ID, tasks[0].Priority)
+	}
+}
+
 func postTask(handler *TaskHandler, queueName string, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/queues/"+queueName+"/tasks", bytes.NewBufferString(body))
 	routeCtx := chi.NewRouteContext()

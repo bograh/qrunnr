@@ -25,6 +25,7 @@ type TaskHandler struct {
 type enqueueTaskRequest struct {
 	Payload     json.RawMessage `json:"payload"`
 	ScheduledAt *time.Time      `json:"scheduled_at"`
+	Priority    *int            `json:"priority"`
 }
 
 func NewTaskHandler(store TaskStore) *TaskHandler {
@@ -49,8 +50,16 @@ func (h *TaskHandler) EnqueueTask(w http.ResponseWriter, r *http.Request) {
 	if req.ScheduledAt != nil {
 		scheduledAt = req.ScheduledAt.UTC()
 	}
+	priority := 5
+	if req.Priority != nil {
+		if err := model.ValidatePriority(*req.Priority); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		priority = *req.Priority
+	}
 
-	task := model.NewTask("", payload, scheduledAt, 5)
+	task := model.NewTask("", payload, scheduledAt, priority)
 	created, err := h.store.Create(r.Context(), queueName, task)
 	if errors.Is(err, model.ErrQueueNotFound) {
 		writeError(w, http.StatusNotFound, "queue with name "+queueName+" was not found")

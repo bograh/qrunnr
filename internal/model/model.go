@@ -51,6 +51,14 @@ func ValidateMaxRetries(maxRetries int) error {
 	return nil
 }
 
+func ValidatePriority(priority int) error {
+	if priority < 1 || priority > 10 {
+		return errors.New("priority must be an integer between 1 and 10")
+	}
+
+	return nil
+}
+
 func newID() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
