@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -14,6 +15,7 @@ import (
 
 type TaskStore interface {
 	Create(ctx context.Context, queueName string, task model.Task) (model.Task, error)
+	Get(ctx context.Context, queueName string, taskID string) (model.Task, error)
 }
 
 type TaskHandler struct {
@@ -21,7 +23,8 @@ type TaskHandler struct {
 }
 
 type enqueueTaskRequest struct {
-	Payload json.RawMessage `json:"payload"`
+	Payload     json.RawMessage `json:"payload"`
+	ScheduledAt *time.Time      `json:"scheduled_at"`
 }
 
 func NewTaskHandler(store TaskStore) *TaskHandler {
@@ -42,7 +45,12 @@ func (h *TaskHandler) EnqueueTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	queueName := chi.URLParam(r, "name")
-	task := model.NewImmediateTask("", payload)
+	scheduledAt := time.Now().UTC()
+	if req.ScheduledAt != nil {
+		scheduledAt = req.ScheduledAt.UTC()
+	}
+
+	task := model.NewTask("", payload, scheduledAt, 5)
 	created, err := h.store.Create(r.Context(), queueName, task)
 	if errors.Is(err, model.ErrQueueNotFound) {
 		writeError(w, http.StatusNotFound, "queue with name "+queueName+" was not found")
@@ -56,7 +64,22 @@ func (h *TaskHandler) EnqueueTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, created)
 }
 
-func (h *TaskHandler) GetTask(w http.ResponseWriter, r *http.Request) {}
+func (h *TaskHandler) GetTask(w http.ResponseWriter, r *http.Request) {
+	queueName := chi.URLParam(r, "name")
+	taskID := chi.URLParam(r, "id")
+
+	task, err := h.store.Get(r.Context(), queueName, taskID)
+	if errors.Is(err, model.ErrQueueNotFound) || errors.Is(err, model.ErrTaskNotFound) {
+		writeError(w, http.StatusNotFound, "task with id "+taskID+" was not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to get task")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, task)
+}
 
 func (h *TaskHandler) CancelTask(w http.ResponseWriter, r *http.Request) {}
 

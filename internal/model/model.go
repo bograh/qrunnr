@@ -91,14 +91,18 @@ type Task struct {
 }
 
 func NewImmediateTask(queueID string, payload json.RawMessage) Task {
+	return NewTask(queueID, payload, time.Now().UTC(), 5)
+}
+
+func NewTask(queueID string, payload json.RawMessage, scheduledAt time.Time, priority int) Task {
 	now := time.Now().UTC()
 	return Task{
 		ID:          newID(),
 		QueueID:     queueID,
 		Payload:     payload,
 		Status:      TaskStatusPending,
-		Priority:    5,
-		ScheduledAt: now,
+		Priority:    priority,
+		ScheduledAt: scheduledAt.UTC(),
 		CreatedAt:   now,
 	}
 }

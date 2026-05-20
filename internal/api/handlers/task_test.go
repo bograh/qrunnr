@@ -134,6 +134,111 @@ func TestEnqueuedTaskIsClaimableImmediately(t *testing.T) {
 	t.Fatal("expected enqueued task to be claimable within 1 second")
 }
 
+func TestEnqueueDelayedTaskIsNotClaimableBeforeScheduledAt(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+
+	scheduledAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)
+	rec := postTask(taskHandler, "email_jobs", `{"payload":{"action":"send_email"},"scheduled_at":"`+scheduledAt+`"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, rec.Code, rec.Body.String())
+	}
+
+	tasks, err := taskStore.ClaimPending(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("claim pending: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("expected no claimable tasks before scheduled_at, got %d", len(tasks))
+	}
+}
+
+func TestEnqueuePastScheduledTaskIsClaimableImmediately(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+
+	scheduledAt := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano)
+	rec := postTask(taskHandler, "email_jobs", `{"payload":{"action":"send_email"},"scheduled_at":"`+scheduledAt+`"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, rec.Code, rec.Body.String())
+	}
+
+	tasks, err := taskStore.ClaimPending(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("claim pending: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected past-scheduled task to be claimable, got %d tasks", len(tasks))
+	}
+}
+
+func TestEnqueueTaskRejectsInvalidScheduledAt(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+
+	rec := postTask(taskHandler, "email_jobs", `{"payload":{"action":"send_email"},"scheduled_at":"not-a-time"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetTaskIncludesScheduledAt(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+
+	scheduledAt := time.Now().UTC().Add(time.Hour).Truncate(time.Second)
+	rec := postTask(taskHandler, "email_jobs", `{"payload":{"action":"send_email"},"scheduled_at":"`+scheduledAt.Format(time.RFC3339)+`"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, rec.Code, rec.Body.String())
+	}
+
+	var created model.Task
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	get := getTask(taskHandler, "email_jobs", created.ID)
+	if get.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, get.Code, get.Body.String())
+	}
+
+	var found model.Task
+	if err := json.NewDecoder(get.Body).Decode(&found); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !found.ScheduledAt.Equal(scheduledAt) {
+		t.Fatalf("expected scheduled_at %s, got %s", scheduledAt, found.ScheduledAt)
+	}
+}
+
 func postTask(handler *TaskHandler, queueName string, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/queues/"+queueName+"/tasks", bytes.NewBufferString(body))
 	routeCtx := chi.NewRouteContext()
@@ -142,5 +247,17 @@ func postTask(handler *TaskHandler, queueName string, body string) *httptest.Res
 
 	rec := httptest.NewRecorder()
 	handler.EnqueueTask(rec, req)
+	return rec
+}
+
+func getTask(handler *TaskHandler, queueName string, taskID string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, "/queues/"+queueName+"/tasks/"+taskID, nil)
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("name", queueName)
+	routeCtx.URLParams.Add("id", taskID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+
+	rec := httptest.NewRecorder()
+	handler.GetTask(rec, req)
 	return rec
 }

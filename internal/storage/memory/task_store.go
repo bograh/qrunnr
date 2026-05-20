@@ -51,11 +51,19 @@ func (s *TaskStore) Get(ctx context.Context, queueName string, taskID string) (m
 	default:
 	}
 
+	queue, err := s.queueStore.GetByName(ctx, queueName)
+	if err != nil {
+		return model.Task{}, err
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	task, exists := s.tasks[taskID]
 	if !exists {
+		return model.Task{}, model.ErrTaskNotFound
+	}
+	if task.QueueID != queue.ID {
 		return model.Task{}, model.ErrTaskNotFound
 	}
 

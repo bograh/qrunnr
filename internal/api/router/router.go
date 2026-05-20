@@ -67,3 +67,7 @@ type unavailableTaskStore struct{}
 func (s unavailableTaskStore) Create(ctx context.Context, queueName string, task model.Task) (model.Task, error) {
 	return model.Task{}, model.ErrNotImplemented
 }
+
+func (s unavailableTaskStore) Get(ctx context.Context, queueName string, taskID string) (model.Task, error) {
+	return model.Task{}, model.ErrNotImplemented
+}
