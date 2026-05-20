@@ -1,4 +1,5 @@
-package worker
+package main
+
 import "fmt"
 
 func main() {
