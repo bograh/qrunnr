@@ -1,15 +1,85 @@
 package handlers
 
-import "net/http"
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
 
-type QueueHandler struct{}
+	"taskforge.dev/internal/model"
+)
 
-func NewQueueHandler() *QueueHandler {
-	return &QueueHandler{}
+type QueueStore interface {
+	Create(ctx context.Context, queue model.Queue) (model.Queue, error)
+	List(ctx context.Context) ([]model.Queue, error)
+	GetByName(ctx context.Context, name string) (model.Queue, error)
+	Delete(ctx context.Context, name string) error
 }
 
-func (h *QueueHandler) CreateQueue(w http.ResponseWriter, r *http.Request) {}
+type QueueHandler struct {
+	store QueueStore
+}
+
+type createQueueRequest struct {
+	Name       string `json:"name"`
+	MaxRetries *int   `json:"max_retries"`
+	RateLimit  *int   `json:"rate_limit"`
+}
+
+type errorResponse struct {
+	Error string `json:"error"`
+}
+
+func NewQueueHandler(store QueueStore) *QueueHandler {
+	return &QueueHandler{store: store}
+}
+
+func (h *QueueHandler) CreateQueue(w http.ResponseWriter, r *http.Request) {
+	var req createQueueRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "request body must be valid JSON")
+		return
+	}
+
+	if err := model.ValidateQueueName(req.Name); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if req.MaxRetries == nil {
+		writeError(w, http.StatusBadRequest, "max_retries is required")
+		return
+	}
+
+	if err := model.ValidateMaxRetries(*req.MaxRetries); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	queue := model.NewQueue(req.Name, *req.MaxRetries, req.RateLimit)
+	created, err := h.store.Create(r.Context(), queue)
+	if errors.Is(err, model.ErrQueueAlreadyExists) {
+		writeError(w, http.StatusConflict, "queue with name "+req.Name+" already exists")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create queue")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, created)
+}
 
 func (h *QueueHandler) ListQueues(w http.ResponseWriter, r *http.Request) {}
 
 func (h *QueueHandler) DeleteQueue(w http.ResponseWriter, r *http.Request) {}
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
+}
+
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, errorResponse{Error: message})
+}

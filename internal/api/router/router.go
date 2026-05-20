@@ -5,14 +5,20 @@ import (
 
 	"taskforge.dev/internal/api/handlers"
 	appmiddleware "taskforge.dev/internal/api/middleware"
+	"taskforge.dev/internal/storage/memory"
 )
 
 func NewRouter() *chi.Mux {
+	queueStore := memory.NewQueueStore()
+	return NewRouterWithQueueStore(queueStore)
+}
+
+func NewRouterWithQueueStore(queueStore handlers.QueueStore) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(appmiddleware.Logger)
 	r.Use(appmiddleware.Recovery)
 
-	queueHandler := handlers.NewQueueHandler()
+	queueHandler := handlers.NewQueueHandler(queueStore)
 	taskHandler := handlers.NewTaskHandler()
 	statsHandler := handlers.NewStatsHandler()
 	workerHandler := handlers.NewWorkerHandler()
