@@ -48,7 +48,24 @@ Run the current command entrypoint:
 make run
 ```
 
-At the moment, `make run` prints a startup message only. It does not bind an HTTP port.
+Run a worker process against the API:
+
+```sh
+TASKFORGE_API_URL=http://localhost:8080 WORKER_ID=worker-1 QUEUE=email_jobs go run ./cmd/worker
+```
+
+Worker configuration:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `TASKFORGE_API_URL` | `http://localhost:8080` | API base URL |
+| `WORKER_ID` | host name | Worker identity sent to TaskForge |
+| `QUEUE` | empty | Optional queue filter |
+| `WORKER_POLL_INTERVAL` | `1s` | Delay between claim attempts |
+| `HEARTBEAT_INTERVAL` | `10s` | Heartbeat cadence while executing |
+| `WORKER_REQUEST_TIMEOUT` | `15s` | HTTP client timeout |
+
+The built-in worker treats payloads as JSON objects. It succeeds by default, sleeps when `sleep_ms` is present, and nacks when `fail: true` is present.
 
 Start the supporting Docker services:
 
