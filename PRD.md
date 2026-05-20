@@ -228,6 +228,8 @@ Timeout threshold is configurable per deployment (default: 30 seconds).
 
 ## 12. Admin dashboard
 
+**Current implementation note:** The admin dashboard is deferred from the current v1 backend implementation. The backend exposes queue stats, DLQ, task inspection, and active worker endpoints that a dashboard can consume, but `/admin` is not currently served by the API.
+
 The dashboard is a single-page web UI served at `/admin`. It requires no separate deployment.
 
 **Queue overview panel:** Shows all queues with live metrics — depth, tasks/sec, error rate, oldest pending task age. Updates via server-sent events.
