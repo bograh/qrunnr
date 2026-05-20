@@ -414,6 +414,51 @@ func TestWorkerNackRequiresError(t *testing.T) {
 	}
 }
 
+func TestReclaimExpiredTask(t *testing.T) {
+	_, taskStore, _, _, workerHandler, claimed := setupClaimedTask(t)
+
+	task, err := taskStore.Get(context.Background(), "email_jobs", claimed.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	expiredHeartbeat := time.Now().UTC().Add(-time.Minute)
+	task.HeartbeatAt = &expiredHeartbeat
+	if err := taskStore.ReplaceForTest(context.Background(), task); err != nil {
+		t.Fatalf("replace task: %v", err)
+	}
+
+	reclaimed, err := taskStore.ReclaimExpired(context.Background(), 30*time.Second)
+	if err != nil {
+		t.Fatalf("reclaim expired: %v", err)
+	}
+	if len(reclaimed) != 1 {
+		t.Fatalf("expected 1 reclaimed task, got %d", len(reclaimed))
+	}
+
+	reclaimedTask, err := taskStore.Get(context.Background(), "email_jobs", claimed.ID)
+	if err != nil {
+		t.Fatalf("get reclaimed task: %v", err)
+	}
+	if reclaimedTask.Status != model.TaskStatusRetry {
+		t.Fatalf("expected status %q, got %q", model.TaskStatusRetry, reclaimedTask.Status)
+	}
+	if reclaimedTask.Attempts != 1 {
+		t.Fatalf("expected attempts 1, got %d", reclaimedTask.Attempts)
+	}
+	if reclaimedTask.LastError == nil || *reclaimedTask.LastError != "watchdog: heartbeat expired" {
+		t.Fatalf("expected watchdog last_error, got %v", reclaimedTask.LastError)
+	}
+
+	ack := postAck(workerHandler, `{"task_id":"`+claimed.ID+`","worker_id":"worker-1"}`)
+	if ack.Code != http.StatusConflict {
+		t.Fatalf("expected stale ack status %d, got %d: %s", http.StatusConflict, ack.Code, ack.Body.String())
+	}
+	nack := postNack(workerHandler, `{"task_id":"`+claimed.ID+`","worker_id":"worker-1","error":"late failure"}`)
+	if nack.Code != http.StatusConflict {
+		t.Fatalf("expected stale nack status %d, got %d: %s", http.StatusConflict, nack.Code, nack.Body.String())
+	}
+}
+
 func postClaim(handler *WorkerHandler, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/workers/claim", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()

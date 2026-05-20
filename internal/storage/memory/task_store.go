@@ -342,7 +342,35 @@ func (s *TaskStore) Reschedule(ctx context.Context, taskID string, scheduledAt t
 }
 
 func (s *TaskStore) ReclaimExpired(ctx context.Context, heartbeatTimeout time.Duration) ([]model.Task, error) {
-	return nil, model.ErrNotImplemented
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	now := time.Now().UTC()
+	cutoff := now.Add(-heartbeatTimeout)
+	errMessage := "watchdog: heartbeat expired"
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	reclaimed := make([]model.Task, 0)
+	for id, task := range s.tasks {
+		if task.Status != model.TaskStatusExecuting || task.HeartbeatAt == nil || !task.HeartbeatAt.Before(cutoff) {
+			continue
+		}
+
+		task.Status = model.TaskStatusRetry
+		task.Attempts++
+		task.LastError = &errMessage
+		task.ScheduledAt = now.Add(backoffDelay(task.Attempts))
+		s.tasks[id] = task
+		delete(s.leases, id)
+		reclaimed = append(reclaimed, task)
+	}
+
+	return reclaimed, nil
 }
 
 func (s *TaskStore) Stats(ctx context.Context, queueName string) (model.QueueStats, error) {
@@ -355,6 +383,23 @@ func (s *TaskStore) DeadLetterTask(taskID string) (model.DeadLetterTask, bool) {
 
 	task, ok := s.deadTasks[taskID]
 	return task, ok
+}
+
+func (s *TaskStore) ReplaceForTest(ctx context.Context, task model.Task) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.tasks[task.ID]; !exists {
+		return model.ErrTaskNotFound
+	}
+	s.tasks[task.ID] = task
+	return nil
 }
 
 func (s *TaskStore) ListDeadLetterTasks(ctx context.Context, queueName string) ([]model.DeadLetterTask, error) {
