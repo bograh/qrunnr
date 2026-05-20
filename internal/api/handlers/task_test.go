@@ -239,6 +239,76 @@ func TestGetTaskIncludesScheduledAt(t *testing.T) {
 	}
 }
 
+func TestGetTaskReturnsFullDoneTask(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+	workerHandler := NewWorkerHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+	enqueue := postTask(taskHandler, "email_jobs", `{"payload":{"action":"send_email"}}`)
+	if enqueue.Code != http.StatusCreated {
+		t.Fatalf("expected enqueue status %d, got %d: %s", http.StatusCreated, enqueue.Code, enqueue.Body.String())
+	}
+	claim := postClaim(workerHandler, `{"worker_id":"worker-1"}`)
+	if claim.Code != http.StatusOK {
+		t.Fatalf("expected claim status %d, got %d: %s", http.StatusOK, claim.Code, claim.Body.String())
+	}
+	var claimed model.ClaimedTask
+	if err := json.NewDecoder(claim.Body).Decode(&claimed); err != nil {
+		t.Fatalf("decode claim: %v", err)
+	}
+	ack := postAck(workerHandler, `{"task_id":"`+claimed.ID+`","worker_id":"worker-1","result":{"ok":true}}`)
+	if ack.Code != http.StatusOK {
+		t.Fatalf("expected ack status %d, got %d: %s", http.StatusOK, ack.Code, ack.Body.String())
+	}
+
+	get := getTask(taskHandler, "email_jobs", claimed.ID)
+	if get.Code != http.StatusOK {
+		t.Fatalf("expected get status %d, got %d: %s", http.StatusOK, get.Code, get.Body.String())
+	}
+
+	var task model.Task
+	if err := json.NewDecoder(get.Body).Decode(&task); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if task.Status != model.TaskStatusDone {
+		t.Fatalf("expected status %q, got %q", model.TaskStatusDone, task.Status)
+	}
+	if task.ClaimedBy == nil || *task.ClaimedBy != "worker-1" {
+		t.Fatalf("expected claimed_by worker-1, got %v", task.ClaimedBy)
+	}
+	if task.HeartbeatAt == nil {
+		t.Fatal("expected heartbeat_at")
+	}
+	if task.ScheduledAt.IsZero() {
+		t.Fatal("expected scheduled_at")
+	}
+	if string(task.Result) != `{"ok":true}` {
+		t.Fatalf("expected result, got %s", string(task.Result))
+	}
+}
+
+func TestGetTaskNotFound(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(memory.NewTaskStore(queueStore))
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+
+	get := getTask(taskHandler, "email_jobs", "missing")
+	if get.Code != http.StatusNotFound {
+		t.Fatalf("expected get status %d, got %d: %s", http.StatusNotFound, get.Code, get.Body.String())
+	}
+}
+
 func TestEnqueueTaskDefaultPriority(t *testing.T) {
 	queueStore := memory.NewQueueStore()
 	taskStore := memory.NewTaskStore(queueStore)
