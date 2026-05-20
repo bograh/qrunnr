@@ -43,6 +43,7 @@ func NewRouterWithStores(queueStore handlers.QueueStore, taskStore handlers.Task
 	r.Get("/queues/{name}/tasks/{id}", taskHandler.GetTask)
 	r.Delete("/queues/{name}/tasks/{id}", taskHandler.CancelTask)
 	r.Get("/queues/{name}/stats", statsHandler.GetQueueStats)
+	r.Get("/metrics", statsHandler.GetMetrics)
 
 	r.Post("/workers/claim", workerHandler.ClaimTask)
 	r.Get("/workers", workerHandler.ListWorkers)

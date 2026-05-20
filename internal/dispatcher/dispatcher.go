@@ -33,13 +33,42 @@ func New(taskStore TaskStore, dispatchStore DispatchStore, rateLimiter RateLimit
 		TaskStore:     taskStore,
 		DispatchStore: dispatchStore,
 		RateLimiter:   rateLimiter,
+		Interval:      time.Second,
 	}
 }
 
 func (d *Dispatcher) Run(ctx context.Context) error {
-	return model.ErrNotImplemented
+	interval := d.Interval
+	if interval == 0 {
+		interval = time.Second
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if err := d.DispatchOnce(ctx); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func (d *Dispatcher) DispatchOnce(ctx context.Context) error {
-	return model.ErrNotImplemented
+	tasks, err := d.TaskStore.ClaimPending(ctx, 100)
+	if err != nil {
+		return err
+	}
+
+	for _, task := range tasks {
+		queueName := task.QueueID
+		if err := d.DispatchStore.Enqueue(ctx, queueName, task); err != nil {
+			return err
+		}
+	}
+	return nil
 }

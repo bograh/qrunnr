@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Queues: named channels with config
 CREATE TABLE queues (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),

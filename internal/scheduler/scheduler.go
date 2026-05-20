@@ -47,7 +47,8 @@ func (s *Scheduler) Run(ctx context.Context) error {
 }
 
 func (s *Scheduler) SweepDue(ctx context.Context) error {
-	return model.ErrNotImplemented
+	_, err := s.TaskStore.ListDue(ctx, 100)
+	return err
 }
 
 func (s *Scheduler) ReclaimExpired(ctx context.Context) error {

@@ -268,7 +268,28 @@ func (s *TaskStore) recordDispatchLocked(queue model.Queue, now time.Time) {
 }
 
 func (s *TaskStore) MarkExecuting(ctx context.Context, taskID string, workerID string) error {
-	return model.ErrNotImplemented
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	task, exists := s.tasks[taskID]
+	if !exists {
+		return model.ErrTaskNotFound
+	}
+
+	now := time.Now().UTC()
+	task.Status = model.TaskStatusExecuting
+	task.ClaimedAt = &now
+	task.ClaimedBy = &workerID
+	task.HeartbeatAt = &now
+	s.tasks[taskID] = task
+	s.recordWorkerLocked(workerID, taskID, now)
+	return nil
 }
 
 func (s *TaskStore) Ack(ctx context.Context, taskID string, workerID string, result []byte) error {
@@ -399,7 +420,22 @@ func (s *TaskStore) ListDue(ctx context.Context, limit int) ([]model.Task, error
 }
 
 func (s *TaskStore) Reschedule(ctx context.Context, taskID string, scheduledAt time.Time) error {
-	return model.ErrNotImplemented
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	task, exists := s.tasks[taskID]
+	if !exists {
+		return model.ErrTaskNotFound
+	}
+	task.ScheduledAt = scheduledAt.UTC()
+	s.tasks[taskID] = task
+	return nil
 }
 
 func (s *TaskStore) ReclaimExpired(ctx context.Context, heartbeatTimeout time.Duration) ([]model.Task, error) {
