@@ -295,6 +295,51 @@ func TestWorkerNackSchedulesRetry(t *testing.T) {
 	}
 }
 
+func TestWorkerNackAppliesExponentialBackoffWithJitter(t *testing.T) {
+	_, taskStoreA, _, taskHandlerA, workerHandlerA, claimedA := setupClaimedTask(t)
+	_, taskStoreB, _, taskHandlerB, workerHandlerB, claimedB := setupClaimedTask(t)
+
+	beforeA := time.Now().UTC()
+	recA := postNack(workerHandlerA, `{"task_id":"`+claimedA.ID+`","worker_id":"worker-1","error":"temporary failure"}`)
+	if recA.Code != http.StatusOK {
+		t.Fatalf("expected first nack status %d, got %d: %s", http.StatusOK, recA.Code, recA.Body.String())
+	}
+	beforeB := time.Now().UTC()
+	recB := postNack(workerHandlerB, `{"task_id":"`+claimedB.ID+`","worker_id":"worker-1","error":"temporary failure"}`)
+	if recB.Code != http.StatusOK {
+		t.Fatalf("expected second nack status %d, got %d: %s", http.StatusOK, recB.Code, recB.Body.String())
+	}
+
+	taskA := mustGetTask(t, taskHandlerA, "email_jobs", claimedA.ID)
+	taskB := mustGetTask(t, taskHandlerB, "email_jobs", claimedB.ID)
+
+	delayA := taskA.ScheduledAt.Sub(beforeA)
+	delayB := taskB.ScheduledAt.Sub(beforeB)
+	minDelay := 2 * time.Second
+	maxDelay := 3 * time.Second
+	if delayA < minDelay || delayA > maxDelay {
+		t.Fatalf("expected first attempt delay in [2s, 3s], got %s", delayA)
+	}
+	if delayB < minDelay || delayB > maxDelay {
+		t.Fatalf("expected second attempt delay in [2s, 3s], got %s", delayB)
+	}
+	if taskA.ScheduledAt.Equal(taskB.ScheduledAt) {
+		t.Fatalf("expected jittered scheduled_at values to differ, both were %s", taskA.ScheduledAt)
+	}
+
+	storedA, err := taskStoreA.Get(context.Background(), "email_jobs", claimedA.ID)
+	if err != nil {
+		t.Fatalf("get first task: %v", err)
+	}
+	storedB, err := taskStoreB.Get(context.Background(), "email_jobs", claimedB.ID)
+	if err != nil {
+		t.Fatalf("get second task: %v", err)
+	}
+	if !storedA.ScheduledAt.Equal(taskA.ScheduledAt) || !storedB.ScheduledAt.Equal(taskB.ScheduledAt) {
+		t.Fatal("expected retry scheduled_at to be visible through GET")
+	}
+}
+
 func TestWorkerNackMovesTaskToDeadLetter(t *testing.T) {
 	queueStore := memory.NewQueueStore()
 	taskStore := memory.NewTaskStore(queueStore)
@@ -334,6 +379,21 @@ func TestWorkerNackMovesTaskToDeadLetter(t *testing.T) {
 	if dead.LastError != "permanent failure" {
 		t.Fatalf("expected last error permanent failure, got %q", dead.LastError)
 	}
+}
+
+func mustGetTask(t *testing.T, handler *TaskHandler, queueName string, taskID string) model.Task {
+	t.Helper()
+
+	rec := getTask(handler, queueName, taskID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected get task status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	var task model.Task
+	if err := json.NewDecoder(rec.Body).Decode(&task); err != nil {
+		t.Fatalf("decode task: %v", err)
+	}
+	return task
 }
 
 func TestWorkerNackWrongOwner(t *testing.T) {

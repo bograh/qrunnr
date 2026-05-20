@@ -2,11 +2,18 @@ package memory
 
 import (
 	"context"
+	"crypto/rand"
+	"math/big"
 	"sort"
 	"sync"
 	"time"
 
 	"taskforge.dev/internal/model"
+)
+
+const (
+	defaultRetryBaseDelay = time.Second
+	defaultRetryMaxDelay  = time.Hour
 )
 
 type TaskStore struct {
@@ -351,9 +358,34 @@ func (s *TaskStore) DeadLetterTask(taskID string) (model.DeadLetterTask, bool) {
 }
 
 func backoffDelay(attempts int) time.Duration {
-	delay := time.Second
-	for i := 1; i < attempts; i++ {
+	if attempts < 0 {
+		attempts = 0
+	}
+
+	delay := defaultRetryBaseDelay
+	for i := 0; i < attempts; i++ {
 		delay *= 2
+		if delay >= defaultRetryMaxDelay {
+			delay = defaultRetryMaxDelay
+			break
+		}
+	}
+
+	delay += retryJitter(defaultRetryBaseDelay)
+	if delay > defaultRetryMaxDelay {
+		return defaultRetryMaxDelay
 	}
 	return delay
+}
+
+func retryJitter(base time.Duration) time.Duration {
+	if base <= 0 {
+		return 0
+	}
+
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(base)))
+	if err != nil {
+		return 0
+	}
+	return time.Duration(n.Int64())
 }
