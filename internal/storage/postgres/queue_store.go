@@ -24,6 +24,10 @@ func (s *QueueStore) GetByName(ctx context.Context, name string) (model.Queue, e
 	return model.Queue{}, model.ErrNotImplemented
 }
 
+func (s *QueueStore) UpdateRateLimit(ctx context.Context, name string, rateLimit *int) (model.Queue, error) {
+	return model.Queue{}, model.ErrNotImplemented
+}
+
 func (s *QueueStore) Delete(ctx context.Context, name string) error {
 	return model.ErrNotImplemented
 }

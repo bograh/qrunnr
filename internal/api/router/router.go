@@ -36,6 +36,7 @@ func NewRouterWithStores(queueStore handlers.QueueStore, taskStore handlers.Task
 
 	r.Post("/queues", queueHandler.CreateQueue)
 	r.Get("/queues", queueHandler.ListQueues)
+	r.Patch("/queues/{name}", queueHandler.PatchQueue)
 	r.Delete("/queues/{name}", queueHandler.DeleteQueue)
 
 	r.Post("/queues/{name}/tasks", taskHandler.EnqueueTask)

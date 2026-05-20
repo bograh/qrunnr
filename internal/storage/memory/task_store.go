@@ -22,6 +22,12 @@ type TaskStore struct {
 	tasks      map[string]model.Task
 	leases     map[string]time.Time
 	deadTasks  map[string]model.DeadLetterTask
+	rateLimits map[string]rateBucket
+}
+
+type rateBucket struct {
+	windowStart time.Time
+	dispatched  int
 }
 
 func NewTaskStore(queueStore *QueueStore) *TaskStore {
@@ -30,6 +36,7 @@ func NewTaskStore(queueStore *QueueStore) *TaskStore {
 		tasks:      make(map[string]model.Task),
 		leases:     make(map[string]time.Time),
 		deadTasks:  make(map[string]model.DeadLetterTask),
+		rateLimits: make(map[string]rateBucket),
 	}
 }
 
@@ -178,6 +185,10 @@ func (s *TaskStore) ClaimForWorker(ctx context.Context, workerID string, queueNa
 		if queueName != "" && taskQueueName != queueName {
 			continue
 		}
+		queue, ok := s.queueStore.getByID(task.QueueID)
+		if !ok || !s.allowDispatchLocked(queue, now) {
+			continue
+		}
 		candidates = append(candidates, task)
 	}
 	if len(candidates) == 0 {
@@ -205,6 +216,8 @@ func (s *TaskStore) ClaimForWorker(ctx context.Context, workerID string, queueNa
 	s.leases[task.ID] = leaseExpiresAt
 
 	taskQueueName, _ := s.queueStore.getNameByID(task.QueueID)
+	queue, _ := s.queueStore.getByID(task.QueueID)
+	s.recordDispatchLocked(queue, now)
 	return model.ClaimedTask{
 		ID:             task.ID,
 		Queue:          taskQueueName,
@@ -213,6 +226,33 @@ func (s *TaskStore) ClaimForWorker(ctx context.Context, workerID string, queueNa
 		Attempts:       task.Attempts,
 		LeaseExpiresAt: leaseExpiresAt,
 	}, true, nil
+}
+
+func (s *TaskStore) allowDispatchLocked(queue model.Queue, now time.Time) bool {
+	if queue.RateLimit == nil {
+		return true
+	}
+
+	bucket := s.rateLimits[queue.Name]
+	windowStart := now.Truncate(time.Second)
+	if bucket.windowStart.Before(windowStart) {
+		bucket = rateBucket{windowStart: windowStart}
+	}
+	return bucket.dispatched < *queue.RateLimit
+}
+
+func (s *TaskStore) recordDispatchLocked(queue model.Queue, now time.Time) {
+	if queue.RateLimit == nil {
+		return
+	}
+
+	windowStart := now.Truncate(time.Second)
+	bucket := s.rateLimits[queue.Name]
+	if bucket.windowStart.Before(windowStart) {
+		bucket = rateBucket{windowStart: windowStart}
+	}
+	bucket.dispatched++
+	s.rateLimits[queue.Name] = bucket
 }
 
 func (s *TaskStore) MarkExecuting(ctx context.Context, taskID string, workerID string) error {

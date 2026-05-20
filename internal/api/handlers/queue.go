@@ -15,6 +15,7 @@ type QueueStore interface {
 	Create(ctx context.Context, queue model.Queue) (model.Queue, error)
 	List(ctx context.Context) ([]model.Queue, error)
 	GetByName(ctx context.Context, name string) (model.Queue, error)
+	UpdateRateLimit(ctx context.Context, name string, rateLimit *int) (model.Queue, error)
 	Delete(ctx context.Context, name string) error
 }
 
@@ -30,6 +31,10 @@ type createQueueRequest struct {
 
 type errorResponse struct {
 	Error string `json:"error"`
+}
+
+type patchQueueRequest struct {
+	RateLimit *int `json:"rate_limit"`
 }
 
 func NewQueueHandler(store QueueStore) *QueueHandler {
@@ -80,6 +85,31 @@ func (h *QueueHandler) ListQueues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, queues)
+}
+
+func (h *QueueHandler) PatchQueue(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	var req patchQueueRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "request body must be valid JSON")
+		return
+	}
+	if req.RateLimit != nil && *req.RateLimit < 1 {
+		writeError(w, http.StatusBadRequest, "rate_limit must be greater than 0 when set")
+		return
+	}
+
+	queue, err := h.store.UpdateRateLimit(r.Context(), name, req.RateLimit)
+	if errors.Is(err, model.ErrQueueNotFound) {
+		writeError(w, http.StatusNotFound, "queue with name "+name+" was not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update queue")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, queue)
 }
 
 func (h *QueueHandler) DeleteQueue(w http.ResponseWriter, r *http.Request) {

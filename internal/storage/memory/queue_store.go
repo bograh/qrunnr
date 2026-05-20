@@ -78,6 +78,25 @@ func (s *QueueStore) GetByName(ctx context.Context, name string) (model.Queue, e
 	return queue, nil
 }
 
+func (s *QueueStore) UpdateRateLimit(ctx context.Context, name string, rateLimit *int) (model.Queue, error) {
+	select {
+	case <-ctx.Done():
+		return model.Queue{}, ctx.Err()
+	default:
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	queue, exists := s.queues[name]
+	if !exists {
+		return model.Queue{}, model.ErrQueueNotFound
+	}
+	queue.RateLimit = rateLimit
+	s.queues[name] = queue
+	return queue, nil
+}
+
 func (s *QueueStore) getNameByID(id string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

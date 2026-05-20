@@ -459,6 +459,65 @@ func TestReclaimExpiredTask(t *testing.T) {
 	}
 }
 
+func TestQueueRateLimitCapsDispatchPerSecond(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+	workerHandler := NewWorkerHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5,"rate_limit":1}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+	for i := 0; i < 2; i++ {
+		enqueue := postTask(taskHandler, "email_jobs", `{"payload":{"action":"send_email"}}`)
+		if enqueue.Code != http.StatusCreated {
+			t.Fatalf("expected enqueue status %d, got %d: %s", http.StatusCreated, enqueue.Code, enqueue.Body.String())
+		}
+	}
+
+	first := postClaim(workerHandler, `{"worker_id":"worker-1","queue":"email_jobs"}`)
+	if first.Code != http.StatusOK {
+		t.Fatalf("expected first claim status %d, got %d: %s", http.StatusOK, first.Code, first.Body.String())
+	}
+	second := postClaim(workerHandler, `{"worker_id":"worker-2","queue":"email_jobs"}`)
+	if second.Code != http.StatusNoContent {
+		t.Fatalf("expected second claim status %d while rate limited, got %d: %s", http.StatusNoContent, second.Code, second.Body.String())
+	}
+
+	time.Sleep(time.Second)
+	third := postClaim(workerHandler, `{"worker_id":"worker-3","queue":"email_jobs"}`)
+	if third.Code != http.StatusOK {
+		t.Fatalf("expected claim after next window status %d, got %d: %s", http.StatusOK, third.Code, third.Body.String())
+	}
+}
+
+func TestQueueWithoutRateLimitHasNoDispatchCeiling(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+	workerHandler := NewWorkerHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+	for i := 0; i < 2; i++ {
+		enqueue := postTask(taskHandler, "email_jobs", `{"payload":{"action":"send_email"}}`)
+		if enqueue.Code != http.StatusCreated {
+			t.Fatalf("expected enqueue status %d, got %d: %s", http.StatusCreated, enqueue.Code, enqueue.Body.String())
+		}
+	}
+
+	first := postClaim(workerHandler, `{"worker_id":"worker-1","queue":"email_jobs"}`)
+	second := postClaim(workerHandler, `{"worker_id":"worker-2","queue":"email_jobs"}`)
+	if first.Code != http.StatusOK || second.Code != http.StatusOK {
+		t.Fatalf("expected both unlimited claims to succeed, got %d and %d", first.Code, second.Code)
+	}
+}
+
 func postClaim(handler *WorkerHandler, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/workers/claim", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()

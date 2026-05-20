@@ -249,6 +249,28 @@ func TestDeleteQueueWithActiveTasks(t *testing.T) {
 	}
 }
 
+func TestPatchQueueRateLimit(t *testing.T) {
+	handler := NewQueueHandler(memory.NewQueueStore())
+
+	create := postQueue(handler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected create status %d, got %d", http.StatusCreated, create.Code)
+	}
+
+	rec := patchQueue(handler, "email_jobs", `{"rate_limit":3}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	var queue model.Queue
+	if err := json.NewDecoder(rec.Body).Decode(&queue); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if queue.RateLimit == nil || *queue.RateLimit != 3 {
+		t.Fatalf("expected rate limit 3, got %v", queue.RateLimit)
+	}
+}
+
 func postQueue(handler *QueueHandler, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/queues", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
@@ -274,6 +296,17 @@ func deleteQueue(handler *QueueHandler, name string) *httptest.ResponseRecorder 
 	return rec
 }
 
+func patchQueue(handler *QueueHandler, name string, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPatch, "/queues/"+name, bytes.NewBufferString(body))
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("name", name)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+
+	rec := httptest.NewRecorder()
+	handler.PatchQueue(rec, req)
+	return rec
+}
+
 type conflictQueueStore struct{}
 
 func (s *conflictQueueStore) Create(ctx context.Context, queue model.Queue) (model.Queue, error) {
@@ -285,6 +318,10 @@ func (s *conflictQueueStore) List(ctx context.Context) ([]model.Queue, error) {
 }
 
 func (s *conflictQueueStore) GetByName(ctx context.Context, name string) (model.Queue, error) {
+	return model.Queue{}, errors.New("not used")
+}
+
+func (s *conflictQueueStore) UpdateRateLimit(ctx context.Context, name string, rateLimit *int) (model.Queue, error) {
 	return model.Queue{}, errors.New("not used")
 }
 
