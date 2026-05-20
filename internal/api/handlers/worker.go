@@ -16,6 +16,7 @@ type WorkerStore interface {
 	ClaimForWorker(ctx context.Context, workerID string, queueName string, leaseDuration time.Duration) (model.ClaimedTask, bool, error)
 	Heartbeat(ctx context.Context, taskID string, workerID string) error
 	Ack(ctx context.Context, taskID string, workerID string, result []byte) error
+	Nack(ctx context.Context, taskID string, workerID string, errMessage string) error
 }
 
 type WorkerHandler struct {
@@ -36,6 +37,12 @@ type ackTaskRequest struct {
 	TaskID   string          `json:"task_id"`
 	WorkerID string          `json:"worker_id"`
 	Result   json.RawMessage `json:"result"`
+}
+
+type nackTaskRequest struct {
+	TaskID   string `json:"task_id"`
+	WorkerID string `json:"worker_id"`
+	Error    string `json:"error"`
 }
 
 func NewWorkerHandler(store WorkerStore) *WorkerHandler {
@@ -152,4 +159,46 @@ func (h *WorkerHandler) Ack(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *WorkerHandler) Nack(w http.ResponseWriter, r *http.Request) {}
+func (h *WorkerHandler) Nack(w http.ResponseWriter, r *http.Request) {
+	var req nackTaskRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "request body must be valid JSON")
+		return
+	}
+	if req.TaskID == "" {
+		writeError(w, http.StatusBadRequest, "task_id is required")
+		return
+	}
+	if req.WorkerID == "" {
+		writeError(w, http.StatusBadRequest, "worker_id is required")
+		return
+	}
+	if req.Error == "" {
+		writeError(w, http.StatusBadRequest, "error is required")
+		return
+	}
+
+	err := h.store.Nack(r.Context(), req.TaskID, req.WorkerID, req.Error)
+	if errors.Is(err, model.ErrTaskNotFound) {
+		writeError(w, http.StatusNotFound, "task with id "+req.TaskID+" was not found")
+		return
+	}
+	if errors.Is(err, model.ErrTaskNotOwned) {
+		writeError(w, http.StatusForbidden, "task "+req.TaskID+" is not owned by worker "+req.WorkerID)
+		return
+	}
+	if errors.Is(err, model.ErrTaskLeaseExpired) {
+		writeError(w, http.StatusConflict, "task "+req.TaskID+" lease expired")
+		return
+	}
+	if errors.Is(err, model.ErrTaskInvalidStatus) {
+		writeError(w, http.StatusConflict, "task "+req.TaskID+" is not executing")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to reject task")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}

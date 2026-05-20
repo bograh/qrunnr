@@ -14,6 +14,7 @@ type TaskStore struct {
 	queueStore *QueueStore
 	tasks      map[string]model.Task
 	leases     map[string]time.Time
+	deadTasks  map[string]model.DeadLetterTask
 }
 
 func NewTaskStore(queueStore *QueueStore) *TaskStore {
@@ -21,6 +22,7 @@ func NewTaskStore(queueStore *QueueStore) *TaskStore {
 		queueStore: queueStore,
 		tasks:      make(map[string]model.Task),
 		leases:     make(map[string]time.Time),
+		deadTasks:  make(map[string]model.DeadLetterTask),
 	}
 }
 
@@ -245,7 +247,56 @@ func (s *TaskStore) Ack(ctx context.Context, taskID string, workerID string, res
 }
 
 func (s *TaskStore) Nack(ctx context.Context, taskID string, workerID string, errMessage string) error {
-	return model.ErrNotImplemented
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	task, exists := s.tasks[taskID]
+	if !exists {
+		return model.ErrTaskNotFound
+	}
+	if task.ClaimedBy == nil || *task.ClaimedBy != workerID {
+		return model.ErrTaskNotOwned
+	}
+	if task.Status != model.TaskStatusExecuting {
+		if task.Status == model.TaskStatusRetry {
+			return model.ErrTaskLeaseExpired
+		}
+		return model.ErrTaskInvalidStatus
+	}
+
+	queue, ok := s.queueStore.getByID(task.QueueID)
+	if !ok {
+		return model.ErrQueueNotFound
+	}
+
+	if task.Attempts >= queue.MaxRetries {
+		s.deadTasks[task.ID] = model.DeadLetterTask{
+			ID:        task.ID,
+			QueueID:   task.QueueID,
+			Payload:   task.Payload,
+			LastError: errMessage,
+			Attempts:  task.Attempts,
+			DiedAt:    time.Now().UTC(),
+		}
+		delete(s.tasks, task.ID)
+		delete(s.leases, task.ID)
+		s.queueStore.removeActiveTask(queue.Name)
+		return nil
+	}
+
+	task.Attempts++
+	task.Status = model.TaskStatusRetry
+	task.LastError = &errMessage
+	task.ScheduledAt = time.Now().UTC().Add(backoffDelay(task.Attempts))
+	s.tasks[task.ID] = task
+	delete(s.leases, task.ID)
+	return nil
 }
 
 func (s *TaskStore) Heartbeat(ctx context.Context, taskID string, workerID string) error {
@@ -289,4 +340,20 @@ func (s *TaskStore) ReclaimExpired(ctx context.Context, heartbeatTimeout time.Du
 
 func (s *TaskStore) Stats(ctx context.Context, queueName string) (model.QueueStats, error) {
 	return model.QueueStats{}, model.ErrNotImplemented
+}
+
+func (s *TaskStore) DeadLetterTask(taskID string) (model.DeadLetterTask, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	task, ok := s.deadTasks[taskID]
+	return task, ok
+}
+
+func backoffDelay(attempts int) time.Duration {
+	delay := time.Second
+	for i := 1; i < attempts; i++ {
+		delay *= 2
+	}
+	return delay
 }

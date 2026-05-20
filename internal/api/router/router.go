@@ -89,3 +89,7 @@ func (s unavailableTaskStore) Heartbeat(ctx context.Context, taskID string, work
 func (s unavailableTaskStore) Ack(ctx context.Context, taskID string, workerID string, result []byte) error {
 	return model.ErrNotImplemented
 }
+
+func (s unavailableTaskStore) Nack(ctx context.Context, taskID string, workerID string, errMessage string) error {
+	return model.ErrNotImplemented
+}

@@ -268,10 +268,103 @@ func TestDoneTaskIsNotRedispatched(t *testing.T) {
 	}
 }
 
+func TestWorkerNackSchedulesRetry(t *testing.T) {
+	_, taskStore, _, _, workerHandler, claimed := setupClaimedTask(t)
+	before := time.Now().UTC()
+
+	rec := postNack(workerHandler, `{"task_id":"`+claimed.ID+`","worker_id":"worker-1","error":"downstream failed"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	task, err := taskStore.Get(context.Background(), "email_jobs", claimed.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if task.Status != model.TaskStatusRetry {
+		t.Fatalf("expected status %q, got %q", model.TaskStatusRetry, task.Status)
+	}
+	if task.Attempts != 1 {
+		t.Fatalf("expected attempts 1, got %d", task.Attempts)
+	}
+	if task.LastError == nil || *task.LastError != "downstream failed" {
+		t.Fatalf("expected last_error downstream failed, got %v", task.LastError)
+	}
+	if !task.ScheduledAt.After(before) {
+		t.Fatalf("expected scheduled_at after nack time, got %s", task.ScheduledAt)
+	}
+}
+
+func TestWorkerNackMovesTaskToDeadLetter(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+	workerHandler := NewWorkerHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":0}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+	enqueue := postTask(taskHandler, "email_jobs", `{"payload":{"action":"send_email"}}`)
+	if enqueue.Code != http.StatusCreated {
+		t.Fatalf("expected enqueue status %d, got %d: %s", http.StatusCreated, enqueue.Code, enqueue.Body.String())
+	}
+	claim := postClaim(workerHandler, `{"worker_id":"worker-1"}`)
+	if claim.Code != http.StatusOK {
+		t.Fatalf("expected claim status %d, got %d: %s", http.StatusOK, claim.Code, claim.Body.String())
+	}
+	var claimed model.ClaimedTask
+	if err := json.NewDecoder(claim.Body).Decode(&claimed); err != nil {
+		t.Fatalf("decode claim: %v", err)
+	}
+
+	rec := postNack(workerHandler, `{"task_id":"`+claimed.ID+`","worker_id":"worker-1","error":"permanent failure"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	if _, err := taskStore.Get(context.Background(), "email_jobs", claimed.ID); err != model.ErrTaskNotFound {
+		t.Fatalf("expected task removed from active table, got err %v", err)
+	}
+	dead, ok := taskStore.DeadLetterTask(claimed.ID)
+	if !ok {
+		t.Fatal("expected dead-letter task")
+	}
+	if dead.LastError != "permanent failure" {
+		t.Fatalf("expected last error permanent failure, got %q", dead.LastError)
+	}
+}
+
+func TestWorkerNackWrongOwner(t *testing.T) {
+	_, _, _, _, workerHandler, claimed := setupClaimedTask(t)
+
+	rec := postNack(workerHandler, `{"task_id":"`+claimed.ID+`","worker_id":"worker-2","error":"failed"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusForbidden, rec.Code, rec.Body.String())
+	}
+}
+
+func TestWorkerNackRequiresError(t *testing.T) {
+	_, _, _, _, workerHandler, claimed := setupClaimedTask(t)
+
+	rec := postNack(workerHandler, `{"task_id":"`+claimed.ID+`","worker_id":"worker-1","error":""}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+}
+
 func postClaim(handler *WorkerHandler, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/workers/claim", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 	handler.ClaimTask(rec, req)
+	return rec
+}
+
+func postNack(handler *WorkerHandler, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/workers/nack", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+	handler.Nack(rec, req)
 	return rec
 }
 
@@ -331,4 +424,8 @@ func (s expiredAckStore) Heartbeat(ctx context.Context, taskID string, workerID 
 
 func (s expiredAckStore) Ack(ctx context.Context, taskID string, workerID string, result []byte) error {
 	return model.ErrTaskLeaseExpired
+}
+
+func (s expiredAckStore) Nack(ctx context.Context, taskID string, workerID string, errMessage string) error {
+	return model.ErrNotImplemented
 }
