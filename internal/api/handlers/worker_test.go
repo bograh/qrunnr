@@ -125,9 +125,131 @@ func TestConcurrentWorkersDoNotClaimSameTask(t *testing.T) {
 	}
 }
 
+func TestWorkerHeartbeat(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+	workerHandler := NewWorkerHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+	enqueue := postTask(taskHandler, "email_jobs", `{"payload":{"action":"send_email"}}`)
+	if enqueue.Code != http.StatusCreated {
+		t.Fatalf("expected enqueue status %d, got %d: %s", http.StatusCreated, enqueue.Code, enqueue.Body.String())
+	}
+	claim := postClaim(workerHandler, `{"worker_id":"worker-1"}`)
+	if claim.Code != http.StatusOK {
+		t.Fatalf("expected claim status %d, got %d: %s", http.StatusOK, claim.Code, claim.Body.String())
+	}
+
+	var claimed model.ClaimedTask
+	if err := json.NewDecoder(claim.Body).Decode(&claimed); err != nil {
+		t.Fatalf("decode claim: %v", err)
+	}
+	before := time.Now().UTC()
+
+	rec := postHeartbeat(workerHandler, `{"task_id":"`+claimed.ID+`","worker_id":"worker-1"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected heartbeat status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	task, err := taskStore.Get(context.Background(), "email_jobs", claimed.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if task.HeartbeatAt == nil || task.HeartbeatAt.Before(before) {
+		t.Fatalf("expected heartbeat_at to be updated after %s, got %v", before, task.HeartbeatAt)
+	}
+}
+
+func TestWorkerHeartbeatWrongOwner(t *testing.T) {
+	_, taskStore, _, _, workerHandler, claimed := setupClaimedTask(t)
+
+	rec := postHeartbeat(workerHandler, `{"task_id":"`+claimed.ID+`","worker_id":"worker-2"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusForbidden, rec.Code, rec.Body.String())
+	}
+
+	_ = taskStore
+}
+
+func TestWorkerHeartbeatInvalidStatus(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	workerHandler := NewWorkerHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+	task := model.NewTask("", json.RawMessage(`{"action":"send_email"}`), time.Now().UTC(), 5)
+	workerID := "worker-1"
+	task.Status = model.TaskStatusClaimed
+	task.ClaimedBy = &workerID
+	created, err := taskStore.Create(context.Background(), "email_jobs", task)
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	rec := postHeartbeat(workerHandler, `{"task_id":"`+created.ID+`","worker_id":"worker-1"}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusConflict, rec.Code, rec.Body.String())
+	}
+}
+
+func TestWorkerHeartbeatTaskNotFound(t *testing.T) {
+	workerHandler := NewWorkerHandler(memory.NewTaskStore(memory.NewQueueStore()))
+
+	rec := postHeartbeat(workerHandler, `{"task_id":"missing","worker_id":"worker-1"}`)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusNotFound, rec.Code, rec.Body.String())
+	}
+}
+
 func postClaim(handler *WorkerHandler, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/workers/claim", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 	handler.ClaimTask(rec, req)
 	return rec
+}
+
+func postHeartbeat(handler *WorkerHandler, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/workers/heartbeat", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+	handler.Heartbeat(rec, req)
+	return rec
+}
+
+func setupClaimedTask(t *testing.T) (*memory.QueueStore, *memory.TaskStore, *QueueHandler, *TaskHandler, *WorkerHandler, model.ClaimedTask) {
+	t.Helper()
+
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+	workerHandler := NewWorkerHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+	enqueue := postTask(taskHandler, "email_jobs", `{"payload":{"action":"send_email"}}`)
+	if enqueue.Code != http.StatusCreated {
+		t.Fatalf("expected enqueue status %d, got %d: %s", http.StatusCreated, enqueue.Code, enqueue.Body.String())
+	}
+	claim := postClaim(workerHandler, `{"worker_id":"worker-1"}`)
+	if claim.Code != http.StatusOK {
+		t.Fatalf("expected claim status %d, got %d: %s", http.StatusOK, claim.Code, claim.Body.String())
+	}
+
+	var claimed model.ClaimedTask
+	if err := json.NewDecoder(claim.Body).Decode(&claimed); err != nil {
+		t.Fatalf("decode claim: %v", err)
+	}
+
+	return queueStore, taskStore, queueHandler, taskHandler, workerHandler, claimed
 }

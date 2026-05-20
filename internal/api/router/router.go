@@ -81,3 +81,7 @@ func (s unavailableTaskStore) Cancel(ctx context.Context, queueName string, task
 func (s unavailableTaskStore) ClaimForWorker(ctx context.Context, workerID string, queueName string, leaseDuration time.Duration) (model.ClaimedTask, bool, error) {
 	return model.ClaimedTask{}, false, model.ErrNotImplemented
 }
+
+func (s unavailableTaskStore) Heartbeat(ctx context.Context, taskID string, workerID string) error {
+	return model.ErrNotImplemented
+}

@@ -219,7 +219,30 @@ func (s *TaskStore) Nack(ctx context.Context, taskID string, workerID string, er
 }
 
 func (s *TaskStore) Heartbeat(ctx context.Context, taskID string, workerID string) error {
-	return model.ErrNotImplemented
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	task, exists := s.tasks[taskID]
+	if !exists {
+		return model.ErrTaskNotFound
+	}
+	if task.ClaimedBy == nil || *task.ClaimedBy != workerID {
+		return model.ErrTaskNotOwned
+	}
+	if task.Status != model.TaskStatusExecuting {
+		return model.ErrTaskInvalidStatus
+	}
+
+	heartbeatAt := time.Now().UTC()
+	task.HeartbeatAt = &heartbeatAt
+	s.tasks[taskID] = task
+	return nil
 }
 
 func (s *TaskStore) ListDue(ctx context.Context, limit int) ([]model.Task, error) {
