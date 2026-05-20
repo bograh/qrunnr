@@ -563,6 +563,31 @@ func (s *TaskStore) ReplayDeadLetterTask(ctx context.Context, queueName string, 
 	return task, nil
 }
 
+func (s *TaskStore) DeleteDeadLetterTask(ctx context.Context, queueName string, taskID string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	queue, err := s.queueStore.GetByName(ctx, queueName)
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dead, exists := s.deadTasks[taskID]
+	if !exists || dead.QueueID != queue.ID {
+		return model.ErrDeadLetterTaskNotFound
+	}
+
+	delete(s.deadTasks, taskID)
+	delete(s.failedAt, taskID)
+	return nil
+}
+
 func backoffDelay(attempts int) time.Duration {
 	if attempts < 0 {
 		attempts = 0

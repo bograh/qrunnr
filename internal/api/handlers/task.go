@@ -23,6 +23,7 @@ type TaskStore interface {
 	Nack(ctx context.Context, taskID string, workerID string, errMessage string) error
 	ListDeadLetterTasks(ctx context.Context, queueName string) ([]model.DeadLetterTask, error)
 	ReplayDeadLetterTask(ctx context.Context, queueName string, taskID string) (model.Task, error)
+	DeleteDeadLetterTask(ctx context.Context, queueName string, taskID string) error
 	Stats(ctx context.Context, queueName string) (model.QueueStats, error)
 }
 
