@@ -78,6 +78,19 @@ func (s *QueueStore) GetByName(ctx context.Context, name string) (model.Queue, e
 	return queue, nil
 }
 
+func (s *QueueStore) getNameByID(id string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for name, queue := range s.queues {
+		if queue.ID == id {
+			return name, true
+		}
+	}
+
+	return "", false
+}
+
 func (s *QueueStore) Delete(ctx context.Context, name string) error {
 	select {
 	case <-ctx.Done():

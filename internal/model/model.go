@@ -15,6 +15,9 @@ var ErrQueueNotFound = errors.New("queue not found")
 var ErrQueueHasActiveTasks = errors.New("queue has active tasks")
 var ErrTaskNotFound = errors.New("task not found")
 var ErrTaskNotCancellable = errors.New("task is not cancellable")
+var ErrTaskNotOwned = errors.New("task is not owned by worker")
+var ErrTaskInvalidStatus = errors.New("task status does not allow this operation")
+var ErrTaskLeaseExpired = errors.New("task lease expired")
 
 var queueNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
@@ -98,6 +101,15 @@ type Task struct {
 	LastError   *string         `json:"last_error"`
 	Result      json.RawMessage `json:"result"`
 	CreatedAt   time.Time       `json:"created_at"`
+}
+
+type ClaimedTask struct {
+	ID             string          `json:"id"`
+	Queue          string          `json:"queue"`
+	Payload        json.RawMessage `json:"payload"`
+	Priority       int             `json:"priority"`
+	Attempts       int             `json:"attempts"`
+	LeaseExpiresAt time.Time       `json:"lease_expires_at"`
 }
 
 func NewImmediateTask(queueID string, payload json.RawMessage) Task {

@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -30,7 +31,7 @@ func NewRouterWithStores(queueStore handlers.QueueStore, taskStore handlers.Task
 	queueHandler := handlers.NewQueueHandler(queueStore)
 	taskHandler := handlers.NewTaskHandler(taskStore)
 	statsHandler := handlers.NewStatsHandler()
-	workerHandler := handlers.NewWorkerHandler()
+	workerHandler := handlers.NewWorkerHandler(taskStore)
 	dlqHandler := handlers.NewDLQHandler()
 
 	r.Post("/queues", queueHandler.CreateQueue)
@@ -42,6 +43,7 @@ func NewRouterWithStores(queueStore handlers.QueueStore, taskStore handlers.Task
 	r.Delete("/queues/{name}/tasks/{id}", taskHandler.CancelTask)
 	r.Get("/queues/{name}/stats", statsHandler.GetQueueStats)
 
+	r.Post("/workers/claim", workerHandler.ClaimTask)
 	r.Post("/workers/heartbeat", workerHandler.Heartbeat)
 	r.Post("/workers/ack", workerHandler.Ack)
 	r.Post("/workers/nack", workerHandler.Nack)
@@ -74,4 +76,8 @@ func (s unavailableTaskStore) Get(ctx context.Context, queueName string, taskID 
 
 func (s unavailableTaskStore) Cancel(ctx context.Context, queueName string, taskID string) error {
 	return model.ErrNotImplemented
+}
+
+func (s unavailableTaskStore) ClaimForWorker(ctx context.Context, workerID string, queueName string, leaseDuration time.Duration) (model.ClaimedTask, bool, error) {
+	return model.ClaimedTask{}, false, model.ErrNotImplemented
 }

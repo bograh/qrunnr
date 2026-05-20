@@ -13,12 +13,14 @@ type TaskStore struct {
 	mu         sync.RWMutex
 	queueStore *QueueStore
 	tasks      map[string]model.Task
+	leases     map[string]time.Time
 }
 
 func NewTaskStore(queueStore *QueueStore) *TaskStore {
 	return &TaskStore{
 		queueStore: queueStore,
 		tasks:      make(map[string]model.Task),
+		leases:     make(map[string]time.Time),
 	}
 }
 
@@ -134,6 +136,74 @@ func (s *TaskStore) ClaimPending(ctx context.Context, limit int) ([]model.Task, 
 	}
 
 	return tasks, nil
+}
+
+func (s *TaskStore) ClaimForWorker(ctx context.Context, workerID string, queueName string, leaseDuration time.Duration) (model.ClaimedTask, bool, error) {
+	select {
+	case <-ctx.Done():
+		return model.ClaimedTask{}, false, ctx.Err()
+	default:
+	}
+
+	if queueName != "" {
+		if _, err := s.queueStore.GetByName(ctx, queueName); err != nil {
+			return model.ClaimedTask{}, false, err
+		}
+	}
+
+	now := time.Now().UTC()
+	leaseExpiresAt := now.Add(leaseDuration)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	candidates := make([]model.Task, 0, len(s.tasks))
+	for _, task := range s.tasks {
+		if task.Status != model.TaskStatusPending || task.ScheduledAt.After(now) {
+			continue
+		}
+		taskQueueName, ok := s.queueStore.getNameByID(task.QueueID)
+		if !ok {
+			continue
+		}
+		if queueName != "" && taskQueueName != queueName {
+			continue
+		}
+		candidates = append(candidates, task)
+	}
+	if len(candidates) == 0 {
+		return model.ClaimedTask{}, false, nil
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].Priority != candidates[j].Priority {
+			return candidates[i].Priority < candidates[j].Priority
+		}
+		return candidates[i].ScheduledAt.Before(candidates[j].ScheduledAt)
+	})
+
+	task := candidates[0]
+	claimedAt := now
+	task.Status = model.TaskStatusClaimed
+	task.ClaimedAt = &claimedAt
+	task.ClaimedBy = &workerID
+	s.tasks[task.ID] = task
+
+	task.Status = model.TaskStatusExecuting
+	heartbeatAt := now
+	task.HeartbeatAt = &heartbeatAt
+	s.tasks[task.ID] = task
+	s.leases[task.ID] = leaseExpiresAt
+
+	taskQueueName, _ := s.queueStore.getNameByID(task.QueueID)
+	return model.ClaimedTask{
+		ID:             task.ID,
+		Queue:          taskQueueName,
+		Payload:        task.Payload,
+		Priority:       task.Priority,
+		Attempts:       task.Attempts,
+		LeaseExpiresAt: leaseExpiresAt,
+	}, true, nil
 }
 
 func (s *TaskStore) MarkExecuting(ctx context.Context, taskID string, workerID string) error {

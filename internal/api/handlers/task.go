@@ -17,6 +17,7 @@ type TaskStore interface {
 	Create(ctx context.Context, queueName string, task model.Task) (model.Task, error)
 	Get(ctx context.Context, queueName string, taskID string) (model.Task, error)
 	Cancel(ctx context.Context, queueName string, taskID string) error
+	ClaimForWorker(ctx context.Context, workerID string, queueName string, leaseDuration time.Duration) (model.ClaimedTask, bool, error)
 }
 
 type TaskHandler struct {
