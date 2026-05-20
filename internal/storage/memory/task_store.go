@@ -71,7 +71,32 @@ func (s *TaskStore) Get(ctx context.Context, queueName string, taskID string) (m
 }
 
 func (s *TaskStore) Cancel(ctx context.Context, queueName string, taskID string) error {
-	return model.ErrNotImplemented
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	queue, err := s.queueStore.GetByName(ctx, queueName)
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	task, exists := s.tasks[taskID]
+	if !exists || task.QueueID != queue.ID {
+		return model.ErrTaskNotFound
+	}
+	if task.Status != model.TaskStatusPending {
+		return model.ErrTaskNotCancellable
+	}
+
+	task.Status = model.TaskStatusCancelled
+	s.tasks[taskID] = task
+	s.queueStore.removeActiveTask(queueName)
+	return nil
 }
 
 func (s *TaskStore) ClaimPending(ctx context.Context, limit int) ([]model.Task, error) {

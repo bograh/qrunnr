@@ -14,6 +14,7 @@ var ErrQueueAlreadyExists = errors.New("queue already exists")
 var ErrQueueNotFound = errors.New("queue not found")
 var ErrQueueHasActiveTasks = errors.New("queue has active tasks")
 var ErrTaskNotFound = errors.New("task not found")
+var ErrTaskNotCancellable = errors.New("task is not cancellable")
 
 var queueNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
@@ -80,6 +81,7 @@ const (
 	TaskStatusDone      TaskStatus = "done"
 	TaskStatusRetry     TaskStatus = "retry"
 	TaskStatusDead      TaskStatus = "dead"
+	TaskStatusCancelled TaskStatus = "cancelled"
 )
 
 type Task struct {

@@ -16,6 +16,7 @@ import (
 type TaskStore interface {
 	Create(ctx context.Context, queueName string, task model.Task) (model.Task, error)
 	Get(ctx context.Context, queueName string, taskID string) (model.Task, error)
+	Cancel(ctx context.Context, queueName string, taskID string) error
 }
 
 type TaskHandler struct {
@@ -90,7 +91,26 @@ func (h *TaskHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, task)
 }
 
-func (h *TaskHandler) CancelTask(w http.ResponseWriter, r *http.Request) {}
+func (h *TaskHandler) CancelTask(w http.ResponseWriter, r *http.Request) {
+	queueName := chi.URLParam(r, "name")
+	taskID := chi.URLParam(r, "id")
+
+	err := h.store.Cancel(r.Context(), queueName, taskID)
+	if errors.Is(err, model.ErrQueueNotFound) || errors.Is(err, model.ErrTaskNotFound) {
+		writeError(w, http.StatusNotFound, "task with id "+taskID+" was not found")
+		return
+	}
+	if errors.Is(err, model.ErrTaskNotCancellable) {
+		writeError(w, http.StatusConflict, "task "+taskID+" cannot be cancelled because it is not pending")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to cancel task")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
 
 func validateObjectPayload(payload json.RawMessage) (json.RawMessage, error) {
 	payload = bytes.TrimSpace(payload)

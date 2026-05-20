@@ -327,6 +327,133 @@ func TestHighPriorityTaskIsClaimedBeforeLowPriorityTask(t *testing.T) {
 	}
 }
 
+func TestCancelPendingTask(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+
+	rec := postTask(taskHandler, "email_jobs", `{"payload":{"action":"send_email"}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, rec.Code, rec.Body.String())
+	}
+
+	var created model.Task
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	cancel := deleteTask(taskHandler, "email_jobs", created.ID)
+	if cancel.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusNoContent, cancel.Code, cancel.Body.String())
+	}
+
+	get := getTask(taskHandler, "email_jobs", created.ID)
+	if get.Code != http.StatusOK {
+		t.Fatalf("expected get status %d, got %d: %s", http.StatusOK, get.Code, get.Body.String())
+	}
+
+	var cancelled model.Task
+	if err := json.NewDecoder(get.Body).Decode(&cancelled); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if cancelled.Status != model.TaskStatusCancelled {
+		t.Fatalf("expected status %q, got %q", model.TaskStatusCancelled, cancelled.Status)
+	}
+}
+
+func TestCancelTaskNotFound(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+
+	rec := deleteTask(taskHandler, "email_jobs", "missing")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusNotFound, rec.Code, rec.Body.String())
+	}
+}
+
+func TestCancelTaskRejectsNonPendingStatuses(t *testing.T) {
+	statuses := []model.TaskStatus{
+		model.TaskStatusClaimed,
+		model.TaskStatusExecuting,
+		model.TaskStatusDone,
+		model.TaskStatusDead,
+	}
+
+	for _, status := range statuses {
+		t.Run(string(status), func(t *testing.T) {
+			queueStore := memory.NewQueueStore()
+			taskStore := memory.NewTaskStore(queueStore)
+			queueHandler := NewQueueHandler(queueStore)
+			taskHandler := NewTaskHandler(taskStore)
+
+			create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+			if create.Code != http.StatusCreated {
+				t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+			}
+
+			task := model.NewTask("", json.RawMessage(`{"action":"send_email"}`), time.Now().UTC(), 5)
+			task.Status = status
+			created, err := taskStore.Create(context.Background(), "email_jobs", task)
+			if err != nil {
+				t.Fatalf("create task: %v", err)
+			}
+
+			rec := deleteTask(taskHandler, "email_jobs", created.ID)
+			if rec.Code != http.StatusConflict {
+				t.Fatalf("expected status %d, got %d: %s", http.StatusConflict, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestCancelledTaskIsNotClaimable(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":5}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+
+	rec := postTask(taskHandler, "email_jobs", `{"payload":{"action":"send_email"}}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, rec.Code, rec.Body.String())
+	}
+
+	var created model.Task
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	cancel := deleteTask(taskHandler, "email_jobs", created.ID)
+	if cancel.Code != http.StatusNoContent {
+		t.Fatalf("expected cancel status %d, got %d: %s", http.StatusNoContent, cancel.Code, cancel.Body.String())
+	}
+
+	tasks, err := taskStore.ClaimPending(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("claim pending: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("expected cancelled task not to be claimable, got %d tasks", len(tasks))
+	}
+}
+
 func postTask(handler *TaskHandler, queueName string, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/queues/"+queueName+"/tasks", bytes.NewBufferString(body))
 	routeCtx := chi.NewRouteContext()
@@ -347,5 +474,17 @@ func getTask(handler *TaskHandler, queueName string, taskID string) *httptest.Re
 
 	rec := httptest.NewRecorder()
 	handler.GetTask(rec, req)
+	return rec
+}
+
+func deleteTask(handler *TaskHandler, queueName string, taskID string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodDelete, "/queues/"+queueName+"/tasks/"+taskID, nil)
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("name", queueName)
+	routeCtx.URLParams.Add("id", taskID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+
+	rec := httptest.NewRecorder()
+	handler.CancelTask(rec, req)
 	return rec
 }

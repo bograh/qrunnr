@@ -105,3 +105,12 @@ func (s *QueueStore) addActiveTask(queueName string) {
 
 	s.activeTasks[queueName]++
 }
+
+func (s *QueueStore) removeActiveTask(queueName string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.activeTasks[queueName] > 0 {
+		s.activeTasks[queueName]--
+	}
+}

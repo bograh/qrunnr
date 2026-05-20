@@ -71,3 +71,7 @@ func (s unavailableTaskStore) Create(ctx context.Context, queueName string, task
 func (s unavailableTaskStore) Get(ctx context.Context, queueName string, taskID string) (model.Task, error) {
 	return model.Task{}, model.ErrNotImplemented
 }
+
+func (s unavailableTaskStore) Cancel(ctx context.Context, queueName string, taskID string) error {
+	return model.ErrNotImplemented
+}
