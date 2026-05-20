@@ -25,11 +25,17 @@ type TaskStore struct {
 	rateLimits map[string]rateBucket
 	doneAt     map[string]time.Time
 	failedAt   map[string]time.Time
+	workers    map[string]workerState
 }
 
 type rateBucket struct {
 	windowStart time.Time
 	dispatched  int
+}
+
+type workerState struct {
+	currentTaskID   string
+	lastHeartbeatAt time.Time
 }
 
 func NewTaskStore(queueStore *QueueStore) *TaskStore {
@@ -41,6 +47,7 @@ func NewTaskStore(queueStore *QueueStore) *TaskStore {
 		rateLimits: make(map[string]rateBucket),
 		doneAt:     make(map[string]time.Time),
 		failedAt:   make(map[string]time.Time),
+		workers:    make(map[string]workerState),
 	}
 }
 
@@ -218,6 +225,7 @@ func (s *TaskStore) ClaimForWorker(ctx context.Context, workerID string, queueNa
 	task.HeartbeatAt = &heartbeatAt
 	s.tasks[task.ID] = task
 	s.leases[task.ID] = leaseExpiresAt
+	s.recordWorkerLocked(workerID, task.ID, now)
 
 	taskQueueName, _ := s.queueStore.getNameByID(task.QueueID)
 	queue, _ := s.queueStore.getByID(task.QueueID)
@@ -291,6 +299,7 @@ func (s *TaskStore) Ack(ctx context.Context, taskID string, workerID string, res
 	task.Result = result
 	s.tasks[taskID] = task
 	s.doneAt[taskID] = time.Now().UTC()
+	s.recordWorkerLocked(workerID, "", s.doneAt[taskID])
 	delete(s.leases, taskID)
 	if queueName, ok := s.queueStore.getNameByID(task.QueueID); ok {
 		s.queueStore.removeActiveTask(queueName)
@@ -338,6 +347,7 @@ func (s *TaskStore) Nack(ctx context.Context, taskID string, workerID string, er
 			DiedAt:    failedAt,
 		}
 		s.failedAt[task.ID] = failedAt
+		s.recordWorkerLocked(workerID, "", failedAt)
 		delete(s.tasks, task.ID)
 		delete(s.leases, task.ID)
 		s.queueStore.removeActiveTask(queue.Name)
@@ -351,6 +361,7 @@ func (s *TaskStore) Nack(ctx context.Context, taskID string, workerID string, er
 	task.ScheduledAt = failedAt.Add(backoffDelay(task.Attempts))
 	s.tasks[task.ID] = task
 	s.failedAt[task.ID] = failedAt
+	s.recordWorkerLocked(workerID, "", failedAt)
 	delete(s.leases, task.ID)
 	return nil
 }
@@ -379,6 +390,7 @@ func (s *TaskStore) Heartbeat(ctx context.Context, taskID string, workerID strin
 	heartbeatAt := time.Now().UTC()
 	task.HeartbeatAt = &heartbeatAt
 	s.tasks[taskID] = task
+	s.recordWorkerLocked(workerID, taskID, heartbeatAt)
 	return nil
 }
 
@@ -586,6 +598,56 @@ func (s *TaskStore) DeleteDeadLetterTask(ctx context.Context, queueName string, 
 	delete(s.deadTasks, taskID)
 	delete(s.failedAt, taskID)
 	return nil
+}
+
+func (s *TaskStore) ActiveWorkers(ctx context.Context) ([]model.WorkerStatus, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	now := time.Now().UTC()
+	cutoff := now.Add(-60 * time.Second)
+	staleCutoff := now.Add(-20 * time.Second)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	workers := make([]model.WorkerStatus, 0, len(s.workers))
+	for workerID, worker := range s.workers {
+		if worker.lastHeartbeatAt.Before(cutoff) {
+			delete(s.workers, workerID)
+			continue
+		}
+		workers = append(workers, model.WorkerStatus{
+			WorkerID:        workerID,
+			CurrentTaskID:   worker.currentTaskID,
+			LastHeartbeatAt: worker.lastHeartbeatAt,
+			Stale:           worker.lastHeartbeatAt.Before(staleCutoff),
+		})
+	}
+	sort.Slice(workers, func(i, j int) bool {
+		return workers[i].WorkerID < workers[j].WorkerID
+	})
+	return workers, nil
+}
+
+func (s *TaskStore) ReplaceWorkerForTest(workerID string, currentTaskID string, lastHeartbeatAt time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.workers[workerID] = workerState{currentTaskID: currentTaskID, lastHeartbeatAt: lastHeartbeatAt}
+}
+
+func (s *TaskStore) recordWorkerLocked(workerID string, taskID string, seenAt time.Time) {
+	if workerID == "" {
+		return
+	}
+	s.workers[workerID] = workerState{
+		currentTaskID:   taskID,
+		lastHeartbeatAt: seenAt,
+	}
 }
 
 func backoffDelay(attempts int) time.Duration {

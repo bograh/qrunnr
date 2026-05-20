@@ -518,10 +518,60 @@ func TestQueueWithoutRateLimitHasNoDispatchCeiling(t *testing.T) {
 	}
 }
 
+func TestListActiveWorkers(t *testing.T) {
+	_, taskStore, _, _, workerHandler, claimed := setupClaimedTask(t)
+
+	rec := getWorkers(workerHandler)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected workers status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	var workers []model.WorkerStatus
+	if err := json.NewDecoder(rec.Body).Decode(&workers); err != nil {
+		t.Fatalf("decode workers: %v", err)
+	}
+	if len(workers) != 1 {
+		t.Fatalf("expected 1 active worker, got %d", len(workers))
+	}
+	if workers[0].WorkerID != "worker-1" || workers[0].CurrentTaskID != claimed.ID {
+		t.Fatalf("unexpected worker status: %+v", workers[0])
+	}
+	if workers[0].Stale {
+		t.Fatalf("expected fresh worker, got stale: %+v", workers[0])
+	}
+
+	taskStore.ReplaceWorkerForTest("worker-1", claimed.ID, time.Now().UTC().Add(-21*time.Second))
+	stale := getWorkers(workerHandler)
+	var staleWorkers []model.WorkerStatus
+	if err := json.NewDecoder(stale.Body).Decode(&staleWorkers); err != nil {
+		t.Fatalf("decode stale workers: %v", err)
+	}
+	if len(staleWorkers) != 1 || !staleWorkers[0].Stale {
+		t.Fatalf("expected stale worker, got %+v", staleWorkers)
+	}
+
+	taskStore.ReplaceWorkerForTest("worker-1", claimed.ID, time.Now().UTC().Add(-61*time.Second))
+	expired := getWorkers(workerHandler)
+	var expiredWorkers []model.WorkerStatus
+	if err := json.NewDecoder(expired.Body).Decode(&expiredWorkers); err != nil {
+		t.Fatalf("decode expired workers: %v", err)
+	}
+	if len(expiredWorkers) != 0 {
+		t.Fatalf("expected expired worker to be removed, got %+v", expiredWorkers)
+	}
+}
+
 func postClaim(handler *WorkerHandler, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/workers/claim", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 	handler.ClaimTask(rec, req)
+	return rec
+}
+
+func getWorkers(handler *WorkerHandler) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, "/workers", nil)
+	rec := httptest.NewRecorder()
+	handler.ListWorkers(rec, req)
 	return rec
 }
 
@@ -592,4 +642,8 @@ func (s expiredAckStore) Ack(ctx context.Context, taskID string, workerID string
 
 func (s expiredAckStore) Nack(ctx context.Context, taskID string, workerID string, errMessage string) error {
 	return model.ErrNotImplemented
+}
+
+func (s expiredAckStore) ActiveWorkers(ctx context.Context) ([]model.WorkerStatus, error) {
+	return nil, model.ErrNotImplemented
 }

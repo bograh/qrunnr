@@ -45,6 +45,7 @@ func NewRouterWithStores(queueStore handlers.QueueStore, taskStore handlers.Task
 	r.Get("/queues/{name}/stats", statsHandler.GetQueueStats)
 
 	r.Post("/workers/claim", workerHandler.ClaimTask)
+	r.Get("/workers", workerHandler.ListWorkers)
 	r.Post("/workers/heartbeat", workerHandler.Heartbeat)
 	r.Post("/workers/ack", workerHandler.Ack)
 	r.Post("/workers/nack", workerHandler.Nack)
@@ -109,4 +110,8 @@ func (s unavailableTaskStore) DeleteDeadLetterTask(ctx context.Context, queueNam
 
 func (s unavailableTaskStore) Stats(ctx context.Context, queueName string) (model.QueueStats, error) {
 	return model.QueueStats{}, model.ErrNotImplemented
+}
+
+func (s unavailableTaskStore) ActiveWorkers(ctx context.Context) ([]model.WorkerStatus, error) {
+	return nil, model.ErrNotImplemented
 }

@@ -154,3 +154,10 @@ type WorkerHeartbeat struct {
 	TaskID   string
 	SentAt   time.Time
 }
+
+type WorkerStatus struct {
+	WorkerID        string    `json:"worker_id"`
+	CurrentTaskID   string    `json:"current_task_id"`
+	LastHeartbeatAt time.Time `json:"last_heartbeat_at"`
+	Stale           bool      `json:"stale"`
+}

@@ -25,6 +25,7 @@ type TaskStore interface {
 	ReplayDeadLetterTask(ctx context.Context, queueName string, taskID string) (model.Task, error)
 	DeleteDeadLetterTask(ctx context.Context, queueName string, taskID string) error
 	Stats(ctx context.Context, queueName string) (model.QueueStats, error)
+	ActiveWorkers(ctx context.Context) ([]model.WorkerStatus, error)
 }
 
 type TaskHandler struct {

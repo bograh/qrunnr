@@ -17,6 +17,7 @@ type WorkerStore interface {
 	Heartbeat(ctx context.Context, taskID string, workerID string) error
 	Ack(ctx context.Context, taskID string, workerID string, result []byte) error
 	Nack(ctx context.Context, taskID string, workerID string, errMessage string) error
+	ActiveWorkers(ctx context.Context) ([]model.WorkerStatus, error)
 }
 
 type WorkerHandler struct {
@@ -201,4 +202,14 @@ func (h *WorkerHandler) Nack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *WorkerHandler) ListWorkers(w http.ResponseWriter, r *http.Request) {
+	workers, err := h.store.ActiveWorkers(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list workers")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, workers)
 }
