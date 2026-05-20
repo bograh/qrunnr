@@ -1,25 +1,34 @@
 package router
 
 import (
+	"context"
+
 	"github.com/go-chi/chi/v5"
 
 	"taskforge.dev/internal/api/handlers"
 	appmiddleware "taskforge.dev/internal/api/middleware"
+	"taskforge.dev/internal/model"
 	"taskforge.dev/internal/storage/memory"
 )
 
 func NewRouter() *chi.Mux {
 	queueStore := memory.NewQueueStore()
-	return NewRouterWithQueueStore(queueStore)
+	taskStore := memory.NewTaskStore(queueStore)
+	return NewRouterWithStores(queueStore, taskStore)
 }
 
 func NewRouterWithQueueStore(queueStore handlers.QueueStore) *chi.Mux {
+	taskStore, _ := queueStoreTaskStore(queueStore)
+	return NewRouterWithStores(queueStore, taskStore)
+}
+
+func NewRouterWithStores(queueStore handlers.QueueStore, taskStore handlers.TaskStore) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(appmiddleware.Logger)
 	r.Use(appmiddleware.Recovery)
 
 	queueHandler := handlers.NewQueueHandler(queueStore)
-	taskHandler := handlers.NewTaskHandler()
+	taskHandler := handlers.NewTaskHandler(taskStore)
 	statsHandler := handlers.NewStatsHandler()
 	workerHandler := handlers.NewWorkerHandler()
 	dlqHandler := handlers.NewDLQHandler()
@@ -42,4 +51,19 @@ func NewRouterWithQueueStore(queueStore handlers.QueueStore) *chi.Mux {
 	r.Delete("/queues/{name}/dlq/{id}", dlqHandler.DeleteDeadLetterTask)
 
 	return r
+}
+
+func queueStoreTaskStore(queueStore handlers.QueueStore) (handlers.TaskStore, bool) {
+	store, ok := queueStore.(*memory.QueueStore)
+	if !ok {
+		return unavailableTaskStore{}, false
+	}
+
+	return memory.NewTaskStore(store), true
+}
+
+type unavailableTaskStore struct{}
+
+func (s unavailableTaskStore) Create(ctx context.Context, queueName string, task model.Task) (model.Task, error) {
+	return model.Task{}, model.ErrNotImplemented
 }
