@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"sort"
 	"sync"
 
 	"taskforge.dev/internal/model"
@@ -50,6 +51,9 @@ func (s *QueueStore) List(ctx context.Context) ([]model.Queue, error) {
 	for _, queue := range s.queues {
 		queues = append(queues, queue)
 	}
+	sort.Slice(queues, func(i, j int) bool {
+		return queues[i].Name < queues[j].Name
+	})
 
 	return queues, nil
 }

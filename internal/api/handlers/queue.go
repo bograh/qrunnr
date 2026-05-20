@@ -70,7 +70,15 @@ func (h *QueueHandler) CreateQueue(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, created)
 }
 
-func (h *QueueHandler) ListQueues(w http.ResponseWriter, r *http.Request) {}
+func (h *QueueHandler) ListQueues(w http.ResponseWriter, r *http.Request) {
+	queues, err := h.store.List(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list queues")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, queues)
+}
 
 func (h *QueueHandler) DeleteQueue(w http.ResponseWriter, r *http.Request) {}
 
