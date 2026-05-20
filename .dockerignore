@@ -1,0 +1,8 @@
+.cache/
+.git/
+bin/
+tmp/
+
+*.log
+Dockerfile
+docker-compose.yml
