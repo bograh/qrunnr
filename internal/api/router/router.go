@@ -32,7 +32,7 @@ func NewRouterWithStores(queueStore handlers.QueueStore, taskStore handlers.Task
 	taskHandler := handlers.NewTaskHandler(taskStore)
 	statsHandler := handlers.NewStatsHandler()
 	workerHandler := handlers.NewWorkerHandler(taskStore)
-	dlqHandler := handlers.NewDLQHandler()
+	dlqHandler := handlers.NewDLQHandler(taskStore)
 
 	r.Post("/queues", queueHandler.CreateQueue)
 	r.Get("/queues", queueHandler.ListQueues)
@@ -92,4 +92,8 @@ func (s unavailableTaskStore) Ack(ctx context.Context, taskID string, workerID s
 
 func (s unavailableTaskStore) Nack(ctx context.Context, taskID string, workerID string, errMessage string) error {
 	return model.ErrNotImplemented
+}
+
+func (s unavailableTaskStore) ListDeadLetterTasks(ctx context.Context, queueName string) ([]model.DeadLetterTask, error) {
+	return nil, model.ErrNotImplemented
 }

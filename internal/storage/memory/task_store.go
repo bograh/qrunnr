@@ -357,6 +357,34 @@ func (s *TaskStore) DeadLetterTask(taskID string) (model.DeadLetterTask, bool) {
 	return task, ok
 }
 
+func (s *TaskStore) ListDeadLetterTasks(ctx context.Context, queueName string) ([]model.DeadLetterTask, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	queue, err := s.queueStore.GetByName(ctx, queueName)
+	if err != nil {
+		return nil, err
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	tasks := make([]model.DeadLetterTask, 0, len(s.deadTasks))
+	for _, task := range s.deadTasks {
+		if task.QueueID == queue.ID {
+			tasks = append(tasks, task)
+		}
+	}
+	sort.Slice(tasks, func(i, j int) bool {
+		return tasks[i].DiedAt.Before(tasks[j].DiedAt)
+	})
+
+	return tasks, nil
+}
+
 func backoffDelay(attempts int) time.Duration {
 	if attempts < 0 {
 		attempts = 0

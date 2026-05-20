@@ -130,13 +130,13 @@ func NewTask(queueID string, payload json.RawMessage, scheduledAt time.Time, pri
 }
 
 type DeadLetterTask struct {
-	ID         string
-	QueueID    string
-	Payload    json.RawMessage
-	LastError  string
-	Attempts   int
-	DiedAt     time.Time
-	ReplayedAt *time.Time
+	ID         string          `json:"id"`
+	QueueID    string          `json:"queue_id"`
+	Payload    json.RawMessage `json:"payload"`
+	LastError  string          `json:"last_error"`
+	Attempts   int             `json:"attempts"`
+	DiedAt     time.Time       `json:"died_at"`
+	ReplayedAt *time.Time      `json:"replayed_at"`
 }
 
 type QueueStats struct {
