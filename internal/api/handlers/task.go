@@ -22,6 +22,7 @@ type TaskStore interface {
 	Ack(ctx context.Context, taskID string, workerID string, result []byte) error
 	Nack(ctx context.Context, taskID string, workerID string, errMessage string) error
 	ListDeadLetterTasks(ctx context.Context, queueName string) ([]model.DeadLetterTask, error)
+	Stats(ctx context.Context, queueName string) (model.QueueStats, error)
 }
 
 type TaskHandler struct {

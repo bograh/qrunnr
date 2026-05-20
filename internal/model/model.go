@@ -140,15 +140,12 @@ type DeadLetterTask struct {
 }
 
 type QueueStats struct {
-	QueueName     string
-	PendingDepth  int
-	RetryDepth    int
-	Executing     int
-	Done          int
-	Dead          int
-	TasksPerSec   float64
-	ErrorRate     float64
-	OldestPending *time.Time
+	Depth                   int `json:"depth"`
+	ExecutingCount          int `json:"executing_count"`
+	DoneLastMinute          int `json:"done_last_minute"`
+	FailedLastMinute        int `json:"failed_last_minute"`
+	DLQDepth                int `json:"dlq_depth"`
+	OldestPendingAgeSeconds int `json:"oldest_pending_age_seconds"`
 }
 
 type WorkerHeartbeat struct {

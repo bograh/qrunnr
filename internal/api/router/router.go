@@ -30,7 +30,7 @@ func NewRouterWithStores(queueStore handlers.QueueStore, taskStore handlers.Task
 
 	queueHandler := handlers.NewQueueHandler(queueStore)
 	taskHandler := handlers.NewTaskHandler(taskStore)
-	statsHandler := handlers.NewStatsHandler()
+	statsHandler := handlers.NewStatsHandler(taskStore)
 	workerHandler := handlers.NewWorkerHandler(taskStore)
 	dlqHandler := handlers.NewDLQHandler(taskStore)
 
@@ -97,4 +97,8 @@ func (s unavailableTaskStore) Nack(ctx context.Context, taskID string, workerID 
 
 func (s unavailableTaskStore) ListDeadLetterTasks(ctx context.Context, queueName string) ([]model.DeadLetterTask, error) {
 	return nil, model.ErrNotImplemented
+}
+
+func (s unavailableTaskStore) Stats(ctx context.Context, queueName string) (model.QueueStats, error) {
+	return model.QueueStats{}, model.ErrNotImplemented
 }

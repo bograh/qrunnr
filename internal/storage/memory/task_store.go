@@ -23,6 +23,8 @@ type TaskStore struct {
 	leases     map[string]time.Time
 	deadTasks  map[string]model.DeadLetterTask
 	rateLimits map[string]rateBucket
+	doneAt     map[string]time.Time
+	failedAt   map[string]time.Time
 }
 
 type rateBucket struct {
@@ -37,6 +39,8 @@ func NewTaskStore(queueStore *QueueStore) *TaskStore {
 		leases:     make(map[string]time.Time),
 		deadTasks:  make(map[string]model.DeadLetterTask),
 		rateLimits: make(map[string]rateBucket),
+		doneAt:     make(map[string]time.Time),
+		failedAt:   make(map[string]time.Time),
 	}
 }
 
@@ -286,6 +290,7 @@ func (s *TaskStore) Ack(ctx context.Context, taskID string, workerID string, res
 	task.Status = model.TaskStatusDone
 	task.Result = result
 	s.tasks[taskID] = task
+	s.doneAt[taskID] = time.Now().UTC()
 	delete(s.leases, taskID)
 	if queueName, ok := s.queueStore.getNameByID(task.QueueID); ok {
 		s.queueStore.removeActiveTask(queueName)
@@ -323,14 +328,16 @@ func (s *TaskStore) Nack(ctx context.Context, taskID string, workerID string, er
 	}
 
 	if task.Attempts >= queue.MaxRetries {
+		failedAt := time.Now().UTC()
 		s.deadTasks[task.ID] = model.DeadLetterTask{
 			ID:        task.ID,
 			QueueID:   task.QueueID,
 			Payload:   task.Payload,
 			LastError: errMessage,
 			Attempts:  task.Attempts,
-			DiedAt:    time.Now().UTC(),
+			DiedAt:    failedAt,
 		}
+		s.failedAt[task.ID] = failedAt
 		delete(s.tasks, task.ID)
 		delete(s.leases, task.ID)
 		s.queueStore.removeActiveTask(queue.Name)
@@ -340,8 +347,10 @@ func (s *TaskStore) Nack(ctx context.Context, taskID string, workerID string, er
 	task.Attempts++
 	task.Status = model.TaskStatusRetry
 	task.LastError = &errMessage
-	task.ScheduledAt = time.Now().UTC().Add(backoffDelay(task.Attempts))
+	failedAt := time.Now().UTC()
+	task.ScheduledAt = failedAt.Add(backoffDelay(task.Attempts))
 	s.tasks[task.ID] = task
+	s.failedAt[task.ID] = failedAt
 	delete(s.leases, task.ID)
 	return nil
 }
@@ -406,6 +415,7 @@ func (s *TaskStore) ReclaimExpired(ctx context.Context, heartbeatTimeout time.Du
 		task.LastError = &errMessage
 		task.ScheduledAt = now.Add(backoffDelay(task.Attempts))
 		s.tasks[id] = task
+		s.failedAt[id] = now
 		delete(s.leases, id)
 		reclaimed = append(reclaimed, task)
 	}
@@ -414,7 +424,60 @@ func (s *TaskStore) ReclaimExpired(ctx context.Context, heartbeatTimeout time.Du
 }
 
 func (s *TaskStore) Stats(ctx context.Context, queueName string) (model.QueueStats, error) {
-	return model.QueueStats{}, model.ErrNotImplemented
+	select {
+	case <-ctx.Done():
+		return model.QueueStats{}, ctx.Err()
+	default:
+	}
+
+	queue, err := s.queueStore.GetByName(ctx, queueName)
+	if err != nil {
+		return model.QueueStats{}, err
+	}
+
+	now := time.Now().UTC()
+	oneMinuteAgo := now.Add(-time.Minute)
+	stats := model.QueueStats{}
+	var oldestPending *time.Time
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for id, task := range s.tasks {
+		if task.QueueID != queue.ID {
+			continue
+		}
+		switch task.Status {
+		case model.TaskStatusPending, model.TaskStatusRetry:
+			stats.Depth++
+			if oldestPending == nil || task.ScheduledAt.Before(*oldestPending) {
+				scheduledAt := task.ScheduledAt
+				oldestPending = &scheduledAt
+			}
+		case model.TaskStatusExecuting:
+			stats.ExecutingCount++
+		case model.TaskStatusDone:
+			if doneAt, ok := s.doneAt[id]; ok && !doneAt.Before(oneMinuteAgo) {
+				stats.DoneLastMinute++
+			}
+		}
+		if failedAt, ok := s.failedAt[id]; ok && !failedAt.Before(oneMinuteAgo) {
+			stats.FailedLastMinute++
+		}
+	}
+	for id, task := range s.deadTasks {
+		if task.QueueID != queue.ID {
+			continue
+		}
+		stats.DLQDepth++
+		if failedAt, ok := s.failedAt[id]; ok && !failedAt.Before(oneMinuteAgo) {
+			stats.FailedLastMinute++
+		}
+	}
+	if oldestPending != nil && oldestPending.Before(now) {
+		stats.OldestPendingAgeSeconds = int(now.Sub(*oldestPending).Seconds())
+	}
+	return stats, nil
 }
 
 func (s *TaskStore) DeadLetterTask(taskID string) (model.DeadLetterTask, bool) {
