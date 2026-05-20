@@ -12,6 +12,7 @@ import (
 
 type DLQStore interface {
 	ListDeadLetterTasks(ctx context.Context, queueName string) ([]model.DeadLetterTask, error)
+	ReplayDeadLetterTask(ctx context.Context, queueName string, taskID string) (model.Task, error)
 }
 
 type DLQHandler struct {
@@ -37,6 +38,21 @@ func (h *DLQHandler) ListDeadLetterTasks(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, tasks)
 }
 
-func (h *DLQHandler) ReplayDeadLetterTask(w http.ResponseWriter, r *http.Request) {}
+func (h *DLQHandler) ReplayDeadLetterTask(w http.ResponseWriter, r *http.Request) {
+	queueName := chi.URLParam(r, "name")
+	taskID := chi.URLParam(r, "id")
+
+	task, err := h.store.ReplayDeadLetterTask(r.Context(), queueName, taskID)
+	if errors.Is(err, model.ErrQueueNotFound) || errors.Is(err, model.ErrDeadLetterTaskNotFound) {
+		writeError(w, http.StatusNotFound, "dead-letter task with id "+taskID+" was not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to replay dead-letter task")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, task)
+}
 
 func (h *DLQHandler) DeleteDeadLetterTask(w http.ResponseWriter, r *http.Request) {}

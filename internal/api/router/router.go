@@ -99,6 +99,10 @@ func (s unavailableTaskStore) ListDeadLetterTasks(ctx context.Context, queueName
 	return nil, model.ErrNotImplemented
 }
 
+func (s unavailableTaskStore) ReplayDeadLetterTask(ctx context.Context, queueName string, taskID string) (model.Task, error) {
+	return model.Task{}, model.ErrNotImplemented
+}
+
 func (s unavailableTaskStore) Stats(ctx context.Context, queueName string) (model.QueueStats, error) {
 	return model.QueueStats{}, model.ErrNotImplemented
 }

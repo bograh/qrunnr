@@ -18,6 +18,7 @@ var ErrTaskNotCancellable = errors.New("task is not cancellable")
 var ErrTaskNotOwned = errors.New("task is not owned by worker")
 var ErrTaskInvalidStatus = errors.New("task status does not allow this operation")
 var ErrTaskLeaseExpired = errors.New("task lease expired")
+var ErrDeadLetterTaskNotFound = errors.New("dead-letter task not found")
 
 var queueNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 

@@ -83,6 +83,82 @@ func TestDeadLetterPromotionAppearsInDLQ(t *testing.T) {
 	}
 }
 
+func TestReplayDeadLetterTask(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	taskStore := memory.NewTaskStore(queueStore)
+	queueHandler := NewQueueHandler(queueStore)
+	taskHandler := NewTaskHandler(taskStore)
+	workerHandler := NewWorkerHandler(taskStore)
+	dlqHandler := NewDLQHandler(taskStore)
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":0}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+	enqueue := postTask(taskHandler, "email_jobs", `{"payload":{"action":"send_email"}}`)
+	if enqueue.Code != http.StatusCreated {
+		t.Fatalf("expected enqueue status %d, got %d: %s", http.StatusCreated, enqueue.Code, enqueue.Body.String())
+	}
+	claim := postClaim(workerHandler, `{"worker_id":"worker-1"}`)
+	if claim.Code != http.StatusOK {
+		t.Fatalf("expected claim status %d, got %d: %s", http.StatusOK, claim.Code, claim.Body.String())
+	}
+	var claimed model.ClaimedTask
+	if err := json.NewDecoder(claim.Body).Decode(&claimed); err != nil {
+		t.Fatalf("decode claim: %v", err)
+	}
+	nack := postNack(workerHandler, `{"task_id":"`+claimed.ID+`","worker_id":"worker-1","error":"permanent failure"}`)
+	if nack.Code != http.StatusOK {
+		t.Fatalf("expected nack status %d, got %d: %s", http.StatusOK, nack.Code, nack.Body.String())
+	}
+
+	replay := postReplayDLQ(dlqHandler, "email_jobs", claimed.ID)
+	if replay.Code != http.StatusCreated {
+		t.Fatalf("expected replay status %d, got %d: %s", http.StatusCreated, replay.Code, replay.Body.String())
+	}
+	var replayed model.Task
+	if err := json.NewDecoder(replay.Body).Decode(&replayed); err != nil {
+		t.Fatalf("decode replayed task: %v", err)
+	}
+	if replayed.ID == claimed.ID {
+		t.Fatal("expected replayed task to have a new id")
+	}
+	if replayed.Status != model.TaskStatusPending || replayed.Attempts != 0 {
+		t.Fatalf("expected fresh pending task, got status %q attempts %d", replayed.Status, replayed.Attempts)
+	}
+	if string(replayed.Payload) != `{"action":"send_email"}` {
+		t.Fatalf("expected payload to be preserved, got %s", string(replayed.Payload))
+	}
+
+	list := getDLQ(dlqHandler, "email_jobs")
+	if list.Code != http.StatusOK {
+		t.Fatalf("expected DLQ status %d, got %d: %s", http.StatusOK, list.Code, list.Body.String())
+	}
+	var tasks []model.DeadLetterTask
+	if err := json.NewDecoder(list.Body).Decode(&tasks); err != nil {
+		t.Fatalf("decode DLQ response: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].ReplayedAt == nil {
+		t.Fatalf("expected original DLQ entry to remain with replayed_at set, got %+v", tasks)
+	}
+}
+
+func TestReplayDeadLetterTaskNotFound(t *testing.T) {
+	queueStore := memory.NewQueueStore()
+	queueHandler := NewQueueHandler(queueStore)
+	dlqHandler := NewDLQHandler(memory.NewTaskStore(queueStore))
+
+	create := postQueue(queueHandler, `{"name":"email_jobs","max_retries":0}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected queue create status %d, got %d", http.StatusCreated, create.Code)
+	}
+
+	replay := postReplayDLQ(dlqHandler, "email_jobs", "missing")
+	if replay.Code != http.StatusNotFound {
+		t.Fatalf("expected replay status %d, got %d: %s", http.StatusNotFound, replay.Code, replay.Body.String())
+	}
+}
+
 func getDLQ(handler *DLQHandler, queueName string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodGet, "/queues/"+queueName+"/dlq", nil)
 	routeCtx := chi.NewRouteContext()
@@ -91,5 +167,17 @@ func getDLQ(handler *DLQHandler, queueName string) *httptest.ResponseRecorder {
 
 	rec := httptest.NewRecorder()
 	handler.ListDeadLetterTasks(rec, req)
+	return rec
+}
+
+func postReplayDLQ(handler *DLQHandler, queueName string, taskID string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/queues/"+queueName+"/dlq/"+taskID+"/replay", nil)
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("name", queueName)
+	routeCtx.URLParams.Add("id", taskID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+
+	rec := httptest.NewRecorder()
+	handler.ReplayDeadLetterTask(rec, req)
 	return rec
 }
