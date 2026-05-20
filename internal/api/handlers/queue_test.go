@@ -2,11 +2,15 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 
 	"taskforge.dev/internal/model"
 	"taskforge.dev/internal/storage/memory"
@@ -199,6 +203,52 @@ func TestListQueuesEmpty(t *testing.T) {
 	}
 }
 
+func TestDeleteQueue(t *testing.T) {
+	handler := NewQueueHandler(memory.NewQueueStore())
+
+	create := postQueue(handler, `{"name":"reports","max_retries":0}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected create status %d, got %d", http.StatusCreated, create.Code)
+	}
+
+	rec := deleteQueue(handler, "reports")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusNoContent, rec.Code, rec.Body.String())
+	}
+
+	list := getQueues(handler)
+	if list.Code != http.StatusOK {
+		t.Fatalf("expected list status %d, got %d", http.StatusOK, list.Code)
+	}
+	if strings.TrimSpace(list.Body.String()) != "[]" {
+		t.Fatalf("expected deleted queue to be absent from list, got %s", list.Body.String())
+	}
+}
+
+func TestDeleteQueueNotFound(t *testing.T) {
+	handler := NewQueueHandler(memory.NewQueueStore())
+
+	rec := deleteQueue(handler, "missing")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusNotFound, rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "not found") {
+		t.Fatalf("expected not found message, got %s", rec.Body.String())
+	}
+}
+
+func TestDeleteQueueWithActiveTasks(t *testing.T) {
+	handler := NewQueueHandler(&conflictQueueStore{})
+
+	rec := deleteQueue(handler, "busy")
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusConflict, rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "must be drained first") {
+		t.Fatalf("expected drain-first message, got %s", rec.Body.String())
+	}
+}
+
 func postQueue(handler *QueueHandler, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/queues", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
@@ -211,4 +261,33 @@ func getQueues(handler *QueueHandler) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	handler.ListQueues(rec, req)
 	return rec
+}
+
+func deleteQueue(handler *QueueHandler, name string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodDelete, "/queues/"+name, nil)
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("name", name)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+
+	rec := httptest.NewRecorder()
+	handler.DeleteQueue(rec, req)
+	return rec
+}
+
+type conflictQueueStore struct{}
+
+func (s *conflictQueueStore) Create(ctx context.Context, queue model.Queue) (model.Queue, error) {
+	return model.Queue{}, errors.New("not used")
+}
+
+func (s *conflictQueueStore) List(ctx context.Context) ([]model.Queue, error) {
+	return nil, errors.New("not used")
+}
+
+func (s *conflictQueueStore) GetByName(ctx context.Context, name string) (model.Queue, error) {
+	return model.Queue{}, errors.New("not used")
+}
+
+func (s *conflictQueueStore) Delete(ctx context.Context, name string) error {
+	return model.ErrQueueHasActiveTasks
 }

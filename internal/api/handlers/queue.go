@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
 	"taskforge.dev/internal/model"
 )
 
@@ -80,7 +82,21 @@ func (h *QueueHandler) ListQueues(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, queues)
 }
 
-func (h *QueueHandler) DeleteQueue(w http.ResponseWriter, r *http.Request) {}
+func (h *QueueHandler) DeleteQueue(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if err := h.store.Delete(r.Context(), name); errors.Is(err, model.ErrQueueNotFound) {
+		writeError(w, http.StatusNotFound, "queue with name "+name+" was not found")
+		return
+	} else if errors.Is(err, model.ErrQueueHasActiveTasks) {
+		writeError(w, http.StatusConflict, "queue "+name+" has pending, claimed, or executing tasks and must be drained first")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete queue")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")

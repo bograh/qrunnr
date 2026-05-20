@@ -12,6 +12,7 @@ import (
 var ErrNotImplemented = errors.New("not implemented")
 var ErrQueueAlreadyExists = errors.New("queue already exists")
 var ErrQueueNotFound = errors.New("queue not found")
+var ErrQueueHasActiveTasks = errors.New("queue has active tasks")
 
 var queueNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
