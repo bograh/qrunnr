@@ -21,7 +21,8 @@ type WorkerStore interface {
 }
 
 type WorkerHandler struct {
-	store WorkerStore
+	store         WorkerStore
+	leaseDuration time.Duration
 }
 
 type claimTaskRequest struct {
@@ -47,7 +48,16 @@ type nackTaskRequest struct {
 }
 
 func NewWorkerHandler(store WorkerStore) *WorkerHandler {
-	return &WorkerHandler{store: store}
+	return &WorkerHandler{store: store, leaseDuration: defaultLeaseDuration}
+}
+
+// WithLeaseDuration sets the lease length reported to workers on claim. It
+// should match the watchdog's heartbeat timeout.
+func (h *WorkerHandler) WithLeaseDuration(d time.Duration) *WorkerHandler {
+	if d > 0 {
+		h.leaseDuration = d
+	}
+	return h
 }
 
 func (h *WorkerHandler) ClaimTask(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +71,11 @@ func (h *WorkerHandler) ClaimTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, ok, err := h.store.ClaimForWorker(r.Context(), req.WorkerID, req.Queue, defaultLeaseDuration)
+	task, ok, err := h.store.ClaimForWorker(r.Context(), req.WorkerID, req.Queue, h.leaseDuration)
+	if errors.Is(err, model.ErrQueueNotFound) {
+		writeError(w, http.StatusNotFound, "queue with name "+req.Queue+" was not found")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to claim task")
 		return
@@ -96,6 +110,10 @@ func (h *WorkerHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, model.ErrTaskNotOwned) {
 		writeError(w, http.StatusForbidden, "task "+req.TaskID+" is not owned by worker "+req.WorkerID)
+		return
+	}
+	if errors.Is(err, model.ErrTaskLeaseExpired) {
+		writeError(w, http.StatusConflict, "task "+req.TaskID+" lease expired")
 		return
 	}
 	if errors.Is(err, model.ErrTaskInvalidStatus) {

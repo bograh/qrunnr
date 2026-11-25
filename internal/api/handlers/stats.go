@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -36,11 +35,4 @@ func (h *StatsHandler) GetQueueStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, stats)
-}
-
-func (h *StatsHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-	_, _ = fmt.Fprintln(w, "# HELP taskforge_build_info TaskForge process information")
-	_, _ = fmt.Fprintln(w, "# TYPE taskforge_build_info gauge")
-	_, _ = fmt.Fprintln(w, "taskforge_build_info 1")
 }

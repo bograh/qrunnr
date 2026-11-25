@@ -2,37 +2,66 @@ package router
 
 import (
 	"context"
+	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
 	"taskforge.dev/internal/api/handlers"
 	appmiddleware "taskforge.dev/internal/api/middleware"
-	"taskforge.dev/internal/model"
 	"taskforge.dev/internal/storage/memory"
 )
 
-func NewRouter() *chi.Mux {
-	queueStore := memory.NewQueueStore()
-	taskStore := memory.NewTaskStore(queueStore)
-	return NewRouterWithStores(queueStore, taskStore)
+// Options configures the HTTP router. QueueStore and TaskStore are required;
+// everything else is optional.
+type Options struct {
+	QueueStore handlers.QueueStore
+	TaskStore  handlers.TaskStore
+	Logger     *slog.Logger
+	// LeaseDuration is reported to workers as lease_expires_at on claim.
+	LeaseDuration time.Duration
+	// Metrics serves /metrics. When nil the endpoint is not registered.
+	Metrics http.Handler
+	// Admin is mounted at /admin. When nil the dashboard is not served.
+	Admin http.Handler
+	// Ready reports dependency health for /readyz.
+	Ready func(ctx context.Context) error
 }
 
-func NewRouterWithQueueStore(queueStore handlers.QueueStore) *chi.Mux {
-	taskStore, _ := queueStoreTaskStore(queueStore)
-	return NewRouterWithStores(queueStore, taskStore)
+// NewRouter returns a router backed by fresh in-memory stores.
+func NewRouter() *chi.Mux {
+	queueStore := memory.NewQueueStore()
+	return NewRouterWithStores(queueStore, memory.NewTaskStore(queueStore))
 }
 
 func NewRouterWithStores(queueStore handlers.QueueStore, taskStore handlers.TaskStore) *chi.Mux {
-	r := chi.NewRouter()
-	r.Use(appmiddleware.Logger)
-	r.Use(appmiddleware.Recovery)
+	return New(Options{QueueStore: queueStore, TaskStore: taskStore})
+}
 
-	queueHandler := handlers.NewQueueHandler(queueStore)
-	taskHandler := handlers.NewTaskHandler(taskStore)
-	statsHandler := handlers.NewStatsHandler(taskStore)
-	workerHandler := handlers.NewWorkerHandler(taskStore)
-	dlqHandler := handlers.NewDLQHandler(taskStore)
+func New(opts Options) *chi.Mux {
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	r := chi.NewRouter()
+	r.Use(chimiddleware.RequestID)
+	r.Use(appmiddleware.Logger(logger))
+	r.Use(appmiddleware.Recovery(logger))
+
+	queueHandler := handlers.NewQueueHandler(opts.QueueStore)
+	taskHandler := handlers.NewTaskHandler(opts.TaskStore)
+	statsHandler := handlers.NewStatsHandler(opts.TaskStore)
+	workerHandler := handlers.NewWorkerHandler(opts.TaskStore).WithLeaseDuration(opts.LeaseDuration)
+	dlqHandler := handlers.NewDLQHandler(opts.TaskStore)
+
+	r.Get("/healthz", handlers.Healthz)
+	r.Get("/readyz", handlers.Readyz(opts.Ready))
+	if opts.Metrics != nil {
+		r.Method(http.MethodGet, "/metrics", opts.Metrics)
+	}
 
 	r.Post("/queues", queueHandler.CreateQueue)
 	r.Get("/queues", queueHandler.ListQueues)
@@ -43,7 +72,6 @@ func NewRouterWithStores(queueStore handlers.QueueStore, taskStore handlers.Task
 	r.Get("/queues/{name}/tasks/{id}", taskHandler.GetTask)
 	r.Delete("/queues/{name}/tasks/{id}", taskHandler.CancelTask)
 	r.Get("/queues/{name}/stats", statsHandler.GetQueueStats)
-	r.Get("/metrics", statsHandler.GetMetrics)
 
 	r.Post("/workers/claim", workerHandler.ClaimTask)
 	r.Get("/workers", workerHandler.ListWorkers)
@@ -55,64 +83,11 @@ func NewRouterWithStores(queueStore handlers.QueueStore, taskStore handlers.Task
 	r.Post("/queues/{name}/dlq/{id}/replay", dlqHandler.ReplayDeadLetterTask)
 	r.Delete("/queues/{name}/dlq/{id}", dlqHandler.DeleteDeadLetterTask)
 
-	return r
-}
-
-func queueStoreTaskStore(queueStore handlers.QueueStore) (handlers.TaskStore, bool) {
-	store, ok := queueStore.(*memory.QueueStore)
-	if !ok {
-		return unavailableTaskStore{}, false
+	if opts.Admin != nil {
+		r.Get("/admin", func(w http.ResponseWriter, req *http.Request) {
+			http.Redirect(w, req, "/admin/", http.StatusMovedPermanently)
+		})
+		r.Mount("/admin/", opts.Admin)
 	}
-
-	return memory.NewTaskStore(store), true
-}
-
-type unavailableTaskStore struct{}
-
-func (s unavailableTaskStore) Create(ctx context.Context, queueName string, task model.Task) (model.Task, error) {
-	return model.Task{}, model.ErrNotImplemented
-}
-
-func (s unavailableTaskStore) Get(ctx context.Context, queueName string, taskID string) (model.Task, error) {
-	return model.Task{}, model.ErrNotImplemented
-}
-
-func (s unavailableTaskStore) Cancel(ctx context.Context, queueName string, taskID string) error {
-	return model.ErrNotImplemented
-}
-
-func (s unavailableTaskStore) ClaimForWorker(ctx context.Context, workerID string, queueName string, leaseDuration time.Duration) (model.ClaimedTask, bool, error) {
-	return model.ClaimedTask{}, false, model.ErrNotImplemented
-}
-
-func (s unavailableTaskStore) Heartbeat(ctx context.Context, taskID string, workerID string) error {
-	return model.ErrNotImplemented
-}
-
-func (s unavailableTaskStore) Ack(ctx context.Context, taskID string, workerID string, result []byte) error {
-	return model.ErrNotImplemented
-}
-
-func (s unavailableTaskStore) Nack(ctx context.Context, taskID string, workerID string, errMessage string) error {
-	return model.ErrNotImplemented
-}
-
-func (s unavailableTaskStore) ListDeadLetterTasks(ctx context.Context, queueName string) ([]model.DeadLetterTask, error) {
-	return nil, model.ErrNotImplemented
-}
-
-func (s unavailableTaskStore) ReplayDeadLetterTask(ctx context.Context, queueName string, taskID string) (model.Task, error) {
-	return model.Task{}, model.ErrNotImplemented
-}
-
-func (s unavailableTaskStore) DeleteDeadLetterTask(ctx context.Context, queueName string, taskID string) error {
-	return model.ErrNotImplemented
-}
-
-func (s unavailableTaskStore) Stats(ctx context.Context, queueName string) (model.QueueStats, error) {
-	return model.QueueStats{}, model.ErrNotImplemented
-}
-
-func (s unavailableTaskStore) ActiveWorkers(ctx context.Context) ([]model.WorkerStatus, error) {
-	return nil, model.ErrNotImplemented
+	return r
 }
