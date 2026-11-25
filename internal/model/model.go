@@ -102,6 +102,7 @@ type Task struct {
 	LastError   *string         `json:"last_error"`
 	Result      json.RawMessage `json:"result"`
 	CreatedAt   time.Time       `json:"created_at"`
+	CompletedAt *time.Time      `json:"completed_at"`
 }
 
 type ClaimedTask struct {
@@ -131,13 +132,15 @@ func NewTask(queueID string, payload json.RawMessage, scheduledAt time.Time, pri
 }
 
 type DeadLetterTask struct {
-	ID         string          `json:"id"`
-	QueueID    string          `json:"queue_id"`
-	Payload    json.RawMessage `json:"payload"`
-	LastError  string          `json:"last_error"`
-	Attempts   int             `json:"attempts"`
-	DiedAt     time.Time       `json:"died_at"`
-	ReplayedAt *time.Time      `json:"replayed_at"`
+	ID          string          `json:"id"`
+	QueueID     string          `json:"queue_id"`
+	QueueName   string          `json:"queue,omitempty"`
+	Payload     json.RawMessage `json:"payload"`
+	LastError   string          `json:"last_error"`
+	Attempts    int             `json:"attempts"`
+	DiedAt      time.Time       `json:"died_at"`
+	ReplayedAt  *time.Time      `json:"replayed_at"`
+	ReplayCount int             `json:"replay_count"`
 }
 
 type QueueStats struct {
