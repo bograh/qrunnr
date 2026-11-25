@@ -1,6 +1,6 @@
-// Package integration runs TaskForge end to end against real Postgres and
-// Redis with the reference worker binary. Set TASKFORGE_TEST_DATABASE_URL and
-// TASKFORGE_TEST_REDIS_URL (see `make test-integration`).
+// Package integration runs qrunnr end to end against real Postgres and
+// Redis with the reference worker binary. Set QRUNNR_TEST_DATABASE_URL and
+// QRUNNR_TEST_REDIS_URL (see `make test-integration`).
 package integration
 
 import (
@@ -22,9 +22,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"taskforge.dev/internal/app"
-	"taskforge.dev/internal/config"
-	"taskforge.dev/internal/model"
+	"qrunnr.dev/internal/app"
+	"qrunnr.dev/internal/config"
+	"qrunnr.dev/internal/model"
 )
 
 type harness struct {
@@ -88,10 +88,10 @@ func (h harness) waitFor(what string, timeout time.Duration, cond func() bool) {
 }
 
 func TestEndToEnd(t *testing.T) {
-	dbURL := os.Getenv("TASKFORGE_TEST_DATABASE_URL")
-	redisURL := os.Getenv("TASKFORGE_TEST_REDIS_URL")
+	dbURL := os.Getenv("QRUNNR_TEST_DATABASE_URL")
+	redisURL := os.Getenv("QRUNNR_TEST_REDIS_URL")
 	if dbURL == "" || redisURL == "" {
-		t.Skip("TASKFORGE_TEST_DATABASE_URL and TASKFORGE_TEST_REDIS_URL must be set")
+		t.Skip("QRUNNR_TEST_DATABASE_URL and QRUNNR_TEST_REDIS_URL must be set")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -209,14 +209,14 @@ func TestEndToEnd(t *testing.T) {
 		t.Fatalf("metrics status %d", status)
 	}
 	for _, want := range []string{
-		`taskforge_tasks_enqueued_total{queue="email_jobs"} 5`,
-		`taskforge_tasks_completed_total{queue="email_jobs",status="done"} 5`,
-		`taskforge_tasks_completed_total{queue="fragile",status="dead"} 2`,
-		`taskforge_tasks_completed_total{queue="stuck",status="retry"} 1`,
-		`taskforge_dlq_depth{queue="fragile"} 1`,
-		`taskforge_queue_depth{queue="email_jobs",status="done"} 5`,
-		`taskforge_worker_heartbeat_age_seconds{worker_id="e2e-worker"}`,
-		`taskforge_task_execution_duration_seconds_bucket`,
+		`qrunnr_tasks_enqueued_total{queue="email_jobs"} 5`,
+		`qrunnr_tasks_completed_total{queue="email_jobs",status="done"} 5`,
+		`qrunnr_tasks_completed_total{queue="fragile",status="dead"} 2`,
+		`qrunnr_tasks_completed_total{queue="stuck",status="retry"} 1`,
+		`qrunnr_dlq_depth{queue="fragile"} 1`,
+		`qrunnr_queue_depth{queue="email_jobs",status="done"} 5`,
+		`qrunnr_worker_heartbeat_age_seconds{worker_id="e2e-worker"}`,
+		`qrunnr_task_execution_duration_seconds_bucket`,
 	} {
 		if !strings.Contains(string(metrics), want) {
 			t.Errorf("metrics missing %q", want)
@@ -266,7 +266,7 @@ func startWorker(t *testing.T, apiURL string) func() {
 	var logs bytes.Buffer
 	cmd := exec.Command(bin)
 	cmd.Env = append(os.Environ(),
-		"TASKFORGE_API_URL="+apiURL,
+		"QRUNNR_API_URL="+apiURL,
 		"WORKER_ID=e2e-worker",
 		"QUEUE=",
 		"WORKER_POLL_INTERVAL=50ms",

@@ -11,14 +11,14 @@ import (
 	"syscall"
 	"time"
 
-	"taskforge.dev/internal/app"
-	"taskforge.dev/internal/config"
-	"taskforge.dev/internal/observability"
+	"qrunnr.dev/internal/app"
+	"qrunnr.dev/internal/config"
+	"qrunnr.dev/internal/observability"
 )
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("taskforge exited", "error", err)
+		slog.Error("qrunnr exited", "error", err)
 		os.Exit(1)
 	}
 }
@@ -59,7 +59,7 @@ func run() error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("TaskForge API listening", "addr", server.Addr)
+		logger.Info("qrunnr API listening", "addr", server.Addr)
 		errCh <- server.ListenAndServe()
 	}()
 

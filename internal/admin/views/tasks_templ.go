@@ -12,7 +12,7 @@ import templruntime "github.com/a-h/templ/runtime"
 import (
 	"time"
 
-	"taskforge.dev/internal/model"
+	"qrunnr.dev/internal/model"
 )
 
 func TasksPage(data TaskListData) templ.Component {

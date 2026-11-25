@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"taskforge.dev/internal/model"
+	"qrunnr.dev/internal/model"
 )
 
 type QueueStore struct {

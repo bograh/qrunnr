@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"taskforge.dev/internal/model"
+	"qrunnr.dev/internal/model"
 )
 
 type QueueStore interface {

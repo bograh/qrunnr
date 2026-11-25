@@ -12,8 +12,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"taskforge.dev/internal/model"
-	"taskforge.dev/internal/storage/memory"
+	"qrunnr.dev/internal/model"
+	"qrunnr.dev/internal/storage/memory"
 )
 
 func TestEnqueueImmediateTask(t *testing.T) {

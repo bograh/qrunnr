@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"taskforge.dev/internal/model"
-	webadmin "taskforge.dev/web/admin"
+	"qrunnr.dev/internal/model"
+	webadmin "qrunnr.dev/web/admin"
 )
 
 // FlashKind selects the styling of a flash message.

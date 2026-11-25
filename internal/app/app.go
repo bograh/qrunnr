@@ -1,4 +1,4 @@
-// Package app assembles a TaskForge server from configuration: storage,
+// Package app assembles a qrunnr server from configuration: storage,
 // rate limiting, observability, the admin dashboard, the HTTP router, and the
 // heartbeat watchdog.
 package app
@@ -13,16 +13,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	"taskforge.dev/internal/admin"
-	"taskforge.dev/internal/api/router"
-	"taskforge.dev/internal/config"
-	"taskforge.dev/internal/model"
-	"taskforge.dev/internal/observability"
-	"taskforge.dev/internal/scheduler"
-	"taskforge.dev/internal/storage/memory"
-	"taskforge.dev/internal/storage/postgres"
-	redisstore "taskforge.dev/internal/storage/redis"
-	"taskforge.dev/migrations"
+	"qrunnr.dev/internal/admin"
+	"qrunnr.dev/internal/api/router"
+	"qrunnr.dev/internal/config"
+	"qrunnr.dev/internal/model"
+	"qrunnr.dev/internal/observability"
+	"qrunnr.dev/internal/scheduler"
+	"qrunnr.dev/internal/storage/memory"
+	"qrunnr.dev/internal/storage/postgres"
+	redisstore "qrunnr.dev/internal/storage/redis"
+	"qrunnr.dev/migrations"
 )
 
 // TaskStore is what every storage backend provides to the rest of the server.

@@ -1,5 +1,5 @@
-APP_NAME := taskforge
-IMAGE_NAME := taskforge-api:local
+APP_NAME := qrunnr
+IMAGE_NAME := qrunnr-api:local
 COMPOSE := docker compose
 TEST_COMPOSE := docker compose -f docker-compose.test.yml
 GO_PACKAGES := ./...
@@ -15,7 +15,7 @@ UNAME_M := $(shell uname -m)
 TAILWIND_OS := $(if $(filter darwin,$(UNAME_S)),macos,linux)
 TAILWIND_ARCH := $(if $(filter arm64 aarch64,$(UNAME_M)),arm64,x64)
 
-TEST_DATABASE_URL := postgres://taskforge:taskforge@localhost:55432/taskforge_test?sslmode=disable
+TEST_DATABASE_URL := postgres://qrunnr:qrunnr@localhost:55432/qrunnr_test?sslmode=disable
 TEST_REDIS_URL := redis://localhost:56379/0
 
 .PHONY: help build run worker test test-integration generate templ css tidy docker-build up down restart logs ps clean
@@ -39,11 +39,11 @@ help:
 
 build:
 	@mkdir -p bin
-	$(GOENV) go build -trimpath -o bin/$(APP_NAME) ./cmd/taskforge
+	$(GOENV) go build -trimpath -o bin/$(APP_NAME) ./cmd/qrunnr
 	$(GOENV) go build -trimpath -o bin/worker ./cmd/worker
 
 run:
-	$(GOENV) go run ./cmd/taskforge
+	$(GOENV) go run ./cmd/qrunnr
 
 worker:
 	$(GOENV) go run ./cmd/worker
@@ -54,7 +54,7 @@ test:
 # Integration packages share one database, so packages run one at a time.
 test-integration:
 	$(TEST_COMPOSE) up -d --wait
-	TASKFORGE_TEST_DATABASE_URL='$(TEST_DATABASE_URL)' TASKFORGE_TEST_REDIS_URL='$(TEST_REDIS_URL)' \
+	QRUNNR_TEST_DATABASE_URL='$(TEST_DATABASE_URL)' QRUNNR_TEST_REDIS_URL='$(TEST_REDIS_URL)' \
 		$(GOENV) go test -p 1 -count=1 $(GO_PACKAGES); \
 		status=$$?; $(TEST_COMPOSE) down; exit $$status
 

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"sync"
 
-	"taskforge.dev/internal/model"
+	"qrunnr.dev/internal/model"
 )
 
 type QueueStore struct {

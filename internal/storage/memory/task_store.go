@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"taskforge.dev/internal/model"
-	"taskforge.dev/internal/ratelimit"
+	"qrunnr.dev/internal/model"
+	"qrunnr.dev/internal/ratelimit"
 )
 
 // TaskStore is an in-process task store. It is used for local development

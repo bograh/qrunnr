@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"taskforge.dev/internal/admin"
-	"taskforge.dev/internal/api/router"
-	"taskforge.dev/internal/model"
-	"taskforge.dev/internal/storage/memory"
+	"qrunnr.dev/internal/admin"
+	"qrunnr.dev/internal/api/router"
+	"qrunnr.dev/internal/model"
+	"qrunnr.dev/internal/storage/memory"
 )
 
 type fixture struct {

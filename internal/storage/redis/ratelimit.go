@@ -73,5 +73,5 @@ func (r *RateLimiter) Reset(ctx context.Context, queueName string) error {
 }
 
 func bucketKey(queueName string) string {
-	return "taskforge:ratelimit:" + queueName
+	return "qrunnr:ratelimit:" + queueName
 }

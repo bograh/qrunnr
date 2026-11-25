@@ -40,7 +40,7 @@ func Layout(title string, active string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " · TaskForge</title><link rel=\"stylesheet\" href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " · qrunnr</title><link rel=\"stylesheet\" href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -79,7 +79,7 @@ func Layout(title string, active string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" defer></script></head><body class=\"h-full bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100\"><div class=\"flex min-h-full flex-col md:flex-row\"><aside class=\"border-b border-zinc-200 bg-zinc-100/70 md:sticky md:top-0 md:h-screen md:w-56 md:shrink-0 md:border-r md:border-b-0 dark:border-zinc-800 dark:bg-zinc-900/60\"><div class=\"flex items-center gap-2 px-4 py-3 md:py-5\"><span class=\"grid size-7 place-items-center rounded-md bg-zinc-900 font-mono text-xs font-bold text-white dark:bg-white dark:text-zinc-900\">TF</span> <span class=\"text-sm font-semibold tracking-tight\">TaskForge</span> <span class=\"ml-auto rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-600 md:ml-1 dark:bg-zinc-800 dark:text-zinc-400\">admin</span></div><nav class=\"flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col md:pb-0\" aria-label=\"Main\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" defer></script></head><body class=\"h-full bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100\"><div class=\"flex min-h-full flex-col md:flex-row\"><aside class=\"border-b border-zinc-200 bg-zinc-100/70 md:sticky md:top-0 md:h-screen md:w-56 md:shrink-0 md:border-r md:border-b-0 dark:border-zinc-800 dark:bg-zinc-900/60\"><div class=\"flex items-center gap-2 px-4 py-3 md:py-5\"><span class=\"grid size-7 place-items-center rounded-md bg-zinc-900 font-mono text-xs font-bold text-white dark:bg-white dark:text-zinc-900\">TF</span> <span class=\"text-sm font-semibold tracking-tight\">qrunnr</span> <span class=\"ml-auto rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-600 md:ml-1 dark:bg-zinc-800 dark:text-zinc-400\">admin</span></div><nav class=\"flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col md:pb-0\" aria-label=\"Main\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

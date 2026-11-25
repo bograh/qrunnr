@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"taskforge.dev/internal/model"
-	"taskforge.dev/internal/ratelimit"
+	"qrunnr.dev/internal/model"
+	"qrunnr.dev/internal/ratelimit"
 )
 
 type QueueStore interface {

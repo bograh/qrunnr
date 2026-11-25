@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"taskforge.dev/internal/model"
+	"qrunnr.dev/internal/model"
 )
 
 // NewLogger returns a JSON slog logger writing to stderr at the given level

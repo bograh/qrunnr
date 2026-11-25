@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"taskforge.dev/internal/model"
-	"taskforge.dev/internal/ratelimit"
+	"qrunnr.dev/internal/model"
+	"qrunnr.dev/internal/ratelimit"
 )
 
 // maxClaimAttempts bounds how many rate-limited queues a single claim skips

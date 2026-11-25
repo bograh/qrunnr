@@ -17,7 +17,7 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"taskforge.dev/internal/model"
+	"qrunnr.dev/internal/model"
 )
 
 type workerConfig struct {
@@ -80,7 +80,7 @@ func loadConfig() workerConfig {
 	_ = godotenv.Load()
 
 	return workerConfig{
-		APIURL:            strings.TrimRight(env("TASKFORGE_API_URL", "http://localhost:8080"), "/"),
+		APIURL:            strings.TrimRight(env("QRUNNR_API_URL", "http://localhost:8080"), "/"),
 		WorkerID:          env("WORKER_ID", hostnameWorkerID()),
 		Queue:             os.Getenv("QUEUE"),
 		PollInterval:      durationEnv("WORKER_POLL_INTERVAL", time.Second),

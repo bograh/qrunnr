@@ -1,11 +1,14 @@
+# Project name is fixed so volumes are qrunnr_* regardless of the checkout folder.
+name: qrunnr
+
 services:
   api:
     build:
       context: .
       dockerfile: Dockerfile
-    image: taskforge-api:local
+    image: qrunnr-api:local
     environment:
-      DATABASE_URL: postgres://taskforge:taskforge@postgres:5432/taskforge?sslmode=disable
+      DATABASE_URL: postgres://qrunnr:qrunnr@postgres:5432/qrunnr?sslmode=disable
       REDIS_URL: redis://redis:6379/0
       PORT: "8080"
       LOG_LEVEL: info
@@ -29,15 +32,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: taskforge
-      POSTGRES_PASSWORD: taskforge
-      POSTGRES_DB: taskforge
+      POSTGRES_USER: qrunnr
+      POSTGRES_PASSWORD: qrunnr
+      POSTGRES_DB: qrunnr
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U taskforge -d taskforge"]
+      test: ["CMD-SHELL", "pg_isready -U qrunnr -d qrunnr"]
       interval: 5s
       timeout: 5s
       retries: 10

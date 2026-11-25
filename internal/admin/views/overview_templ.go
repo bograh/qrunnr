@@ -9,7 +9,7 @@ package views
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-import "taskforge.dev/internal/model"
+import "qrunnr.dev/internal/model"
 
 func OverviewPage(data OverviewData, queues []model.Queue, flash Flash) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {

@@ -9,9 +9,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
-	"taskforge.dev/internal/api/handlers"
-	appmiddleware "taskforge.dev/internal/api/middleware"
-	"taskforge.dev/internal/storage/memory"
+	"qrunnr.dev/internal/api/handlers"
+	appmiddleware "qrunnr.dev/internal/api/middleware"
+	"qrunnr.dev/internal/storage/memory"
 )
 
 // Options configures the HTTP router. QueueStore and TaskStore are required;

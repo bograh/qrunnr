@@ -3,8 +3,8 @@ package memory_test
 import (
 	"testing"
 
-	"taskforge.dev/internal/storage/memory"
-	"taskforge.dev/internal/storage/storetest"
+	"qrunnr.dev/internal/storage/memory"
+	"qrunnr.dev/internal/storage/storetest"
 )
 
 func TestStoreContract(t *testing.T) {

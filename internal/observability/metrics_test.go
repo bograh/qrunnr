@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"taskforge.dev/internal/model"
+	"qrunnr.dev/internal/model"
 )
 
 type fakeSource struct{}
@@ -38,14 +38,14 @@ func TestMetricsExposition(t *testing.T) {
 	out := string(body)
 
 	for _, want := range []string{
-		`taskforge_tasks_enqueued_total{queue="email"} 1`,
-		`taskforge_tasks_completed_total{queue="email",status="done"} 1`,
-		`taskforge_tasks_completed_total{queue="email",status="retry"} 1`,
-		`taskforge_task_execution_duration_seconds_count{queue="email"} 2`,
-		`taskforge_queue_depth{queue="email",status="pending"} 7`,
-		`taskforge_queue_depth{queue="email",status="executing"} 0`,
-		`taskforge_dlq_depth{queue="email"} 2`,
-		`taskforge_worker_heartbeat_age_seconds{worker_id="w1"} 3`,
+		`qrunnr_tasks_enqueued_total{queue="email"} 1`,
+		`qrunnr_tasks_completed_total{queue="email",status="done"} 1`,
+		`qrunnr_tasks_completed_total{queue="email",status="retry"} 1`,
+		`qrunnr_task_execution_duration_seconds_count{queue="email"} 2`,
+		`qrunnr_queue_depth{queue="email",status="pending"} 7`,
+		`qrunnr_queue_depth{queue="email",status="executing"} 0`,
+		`qrunnr_dlq_depth{queue="email"} 2`,
+		`qrunnr_worker_heartbeat_age_seconds{worker_id="w1"} 3`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("metrics output missing %q", want)

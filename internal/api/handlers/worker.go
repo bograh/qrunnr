@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"taskforge.dev/internal/model"
+	"qrunnr.dev/internal/model"
 )
 
 const defaultLeaseDuration = 30 * time.Second

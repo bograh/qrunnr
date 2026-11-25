@@ -1,4 +1,4 @@
-module taskforge.dev
+module qrunnr.dev
 
 go 1.26.0
 

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"taskforge.dev/internal/model"
-	"taskforge.dev/internal/storage/memory"
+	"qrunnr.dev/internal/model"
+	"qrunnr.dev/internal/storage/memory"
 )
 
 func TestWorkerClaimsTask(t *testing.T) {

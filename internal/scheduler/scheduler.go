@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"taskforge.dev/internal/model"
+	"qrunnr.dev/internal/model"
 )
 
 type TaskStore interface {

@@ -8,7 +8,7 @@ templ Layout(title string, active string) {
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<meta name="color-scheme" content="light dark"/>
 			<meta name="htmx-config" content='{"defaultSwapStyle":"innerHTML","historyCacheSize":0}'/>
-			<title>{ title } · TaskForge</title>
+			<title>{ title } · qrunnr</title>
 			<link rel="stylesheet" href={ asset("app.css") }/>
 			<script src={ asset("vendor/htmx.min.js") } defer></script>
 			<script src={ asset("vendor/htmx-ext-sse.js") } defer></script>
@@ -18,7 +18,7 @@ templ Layout(title string, active string) {
 				<aside class="border-b border-zinc-200 bg-zinc-100/70 md:sticky md:top-0 md:h-screen md:w-56 md:shrink-0 md:border-r md:border-b-0 dark:border-zinc-800 dark:bg-zinc-900/60">
 					<div class="flex items-center gap-2 px-4 py-3 md:py-5">
 						<span class="grid size-7 place-items-center rounded-md bg-zinc-900 font-mono text-xs font-bold text-white dark:bg-white dark:text-zinc-900">TF</span>
-						<span class="text-sm font-semibold tracking-tight">TaskForge</span>
+						<span class="text-sm font-semibold tracking-tight">qrunnr</span>
 						<span class="ml-auto rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-600 md:ml-1 dark:bg-zinc-800 dark:text-zinc-400">admin</span>
 					</div>
 					<nav class="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col md:pb-0" aria-label="Main">

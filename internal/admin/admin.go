@@ -17,9 +17,9 @@ import (
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 
-	"taskforge.dev/internal/admin/views"
-	"taskforge.dev/internal/model"
-	webadmin "taskforge.dev/web/admin"
+	"qrunnr.dev/internal/admin/views"
+	"qrunnr.dev/internal/model"
+	webadmin "qrunnr.dev/web/admin"
 )
 
 // QueueStore is the queue persistence the dashboard needs.
@@ -138,7 +138,7 @@ func (h *Handler) basicAuth(next http.Handler) http.Handler {
 		userOK := subtle.ConstantTimeCompare([]byte(user), []byte(h.username)) == 1
 		passOK := subtle.ConstantTimeCompare([]byte(pass), []byte(h.password)) == 1
 		if !ok || !userOK || !passOK {
-			w.Header().Set("WWW-Authenticate", `Basic realm="TaskForge admin", charset="UTF-8"`)
+			w.Header().Set("WWW-Authenticate", `Basic realm="qrunnr admin", charset="UTF-8"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}

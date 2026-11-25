@@ -1,6 +1,6 @@
-# TaskForge
+# qrunnr
 
-TaskForge is a self-hosted distributed task queue. Services enqueue JSON tasks over a REST API; stateless workers claim them, send heartbeats, and report success or failure. TaskForge handles priorities, delayed delivery, retries with exponential backoff, dead-lettering, per-queue rate limits, crashed-worker recovery, metrics, and an operator dashboard.
+qrunnr (pronounced "queue runner") is a self-hosted distributed task queue. Services enqueue JSON tasks over a REST API; stateless workers claim them, send heartbeats, and report success or failure. qrunnr handles priorities, delayed delivery, retries with exponential backoff, dead-lettering, per-queue rate limits, crashed-worker recovery, metrics, and an operator dashboard.
 
 ## Status
 
@@ -29,14 +29,14 @@ Create a queue, enqueue work, and run a worker:
 ```sh
 curl -X POST localhost:8080/queues -d '{"name":"email_jobs","max_retries":5,"rate_limit":10}'
 curl -X POST localhost:8080/queues/email_jobs/tasks -d '{"payload":{"user_id":"abc123"},"priority":3}'
-TASKFORGE_API_URL=http://localhost:8080 WORKER_ID=worker-1 make worker
+QRUNNR_API_URL=http://localhost:8080 WORKER_ID=worker-1 make worker
 ```
 
 Without `DATABASE_URL`, `make run` starts the API with in-memory storage. Data is lost on restart.
 
 ## Configuration
 
-API server (`cmd/taskforge`):
+API server (`cmd/qrunnr`):
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -56,8 +56,8 @@ Reference worker (`cmd/worker`):
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `TASKFORGE_API_URL` | `http://localhost:8080` | API base URL |
-| `WORKER_ID` | host name | Worker identity sent to TaskForge |
+| `QRUNNR_API_URL` | `http://localhost:8080` | API base URL |
+| `WORKER_ID` | host name | Worker identity sent to qrunnr |
 | `QUEUE` | empty | Optional queue filter |
 | `WORKER_POLL_INTERVAL` | `1s` | Delay between claim attempts |
 | `HEARTBEAT_INTERVAL` | `10s` | Heartbeat cadence while executing |
@@ -122,12 +122,12 @@ POST /workers/nack
 
 | Metric | Type | Labels |
 | --- | --- | --- |
-| `taskforge_tasks_enqueued_total` | counter | `queue` |
-| `taskforge_tasks_completed_total` | counter | `queue`, `status` (`done`, `retry`, `dead`) |
-| `taskforge_task_execution_duration_seconds` | histogram | `queue` |
-| `taskforge_queue_depth` | gauge | `queue`, `status` |
-| `taskforge_dlq_depth` | gauge | `queue` |
-| `taskforge_worker_heartbeat_age_seconds` | gauge | `worker_id` |
+| `qrunnr_tasks_enqueued_total` | counter | `queue` |
+| `qrunnr_tasks_completed_total` | counter | `queue`, `status` (`done`, `retry`, `dead`) |
+| `qrunnr_task_execution_duration_seconds` | histogram | `queue` |
+| `qrunnr_queue_depth` | gauge | `queue`, `status` |
+| `qrunnr_dlq_depth` | gauge | `queue` |
+| `qrunnr_worker_heartbeat_age_seconds` | gauge | `worker_id` |
 
 Gauges are read from the database at scrape time, so every instance reports the same values. Counters and the histogram are per instance; sum them across instances.
 
@@ -152,7 +152,7 @@ After editing `.templ` files or Tailwind classes, run `make generate`.
 make test               # unit tests; Postgres/Redis tests skip themselves
 make test-integration   # all tests against disposable Postgres + Redis (Docker)
 make generate           # templ + Tailwind
-make build              # bin/taskforge and bin/worker
+make build              # bin/qrunnr and bin/worker
 ```
 
 `make test-integration` runs:
@@ -164,7 +164,7 @@ make build              # bin/taskforge and bin/worker
 ## Repository layout
 
 ```text
-cmd/taskforge/          API server entrypoint
+cmd/qrunnr/          API server entrypoint
 cmd/worker/             reference worker
 internal/app/           wiring: storage, observability, dashboard, router, watchdog
 internal/api/           HTTP router, handlers, middleware

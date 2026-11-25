@@ -7,13 +7,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"taskforge.dev/internal/storage/postgres"
-	"taskforge.dev/internal/storage/storetest"
-	"taskforge.dev/migrations"
+	"qrunnr.dev/internal/storage/postgres"
+	"qrunnr.dev/internal/storage/storetest"
+	"qrunnr.dev/migrations"
 )
 
 // TestStoreContract runs the shared storage suite against a real Postgres.
-// Set TASKFORGE_TEST_DATABASE_URL to a disposable database to enable it
+// Set QRUNNR_TEST_DATABASE_URL to a disposable database to enable it
 // (`make test-integration` does this). Every table is truncated between
 // subtests.
 func TestStoreContract(t *testing.T) {
@@ -37,9 +37,9 @@ func TestMigrateIsIdempotent(t *testing.T) {
 
 func testPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	url := os.Getenv("TASKFORGE_TEST_DATABASE_URL")
+	url := os.Getenv("QRUNNR_TEST_DATABASE_URL")
 	if url == "" {
-		t.Skip("TASKFORGE_TEST_DATABASE_URL not set")
+		t.Skip("QRUNNR_TEST_DATABASE_URL not set")
 	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, url)

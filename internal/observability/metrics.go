@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"taskforge.dev/internal/model"
+	"qrunnr.dev/internal/model"
 )
 
 // GaugeSource supplies the point-in-time values exported as gauges on every
@@ -20,7 +20,7 @@ type GaugeSource interface {
 	ActiveWorkers(ctx context.Context) ([]model.WorkerStatus, error)
 }
 
-// Metrics holds TaskForge's Prometheus metrics. It is a model.Observer: event
+// Metrics holds qrunnr's Prometheus metrics. It is a model.Observer: event
 // counters and the execution histogram are updated from transitions, while
 // queue depth, DLQ depth, and worker heartbeat age are read from the store at
 // scrape time so every API instance reports the same shared values.
@@ -35,15 +35,15 @@ func NewMetrics(source GaugeSource, logger *slog.Logger) *Metrics {
 	m := &Metrics{
 		registry: prometheus.NewRegistry(),
 		enqueued: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "taskforge_tasks_enqueued_total",
+			Name: "qrunnr_tasks_enqueued_total",
 			Help: "Tasks enqueued, including dead-letter replays.",
 		}, []string{"queue"}),
 		completed: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "taskforge_tasks_completed_total",
+			Name: "qrunnr_tasks_completed_total",
 			Help: "Task executions that finished, by outcome status (done, retry, dead).",
 		}, []string{"queue", "status"}),
 		duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "taskforge_task_execution_duration_seconds",
+			Name:    "qrunnr_task_execution_duration_seconds",
 			Help:    "Time from claim to ack, nack, or watchdog reclaim.",
 			Buckets: prometheus.ExponentialBuckets(0.01, 2, 16),
 		}, []string{"queue"}),
@@ -78,11 +78,11 @@ func (m *Metrics) Registry() *prometheus.Registry { return m.registry }
 
 var (
 	queueDepthDesc = prometheus.NewDesc(
-		"taskforge_queue_depth", "Tasks in a queue by status.", []string{"queue", "status"}, nil)
+		"qrunnr_queue_depth", "Tasks in a queue by status.", []string{"queue", "status"}, nil)
 	dlqDepthDesc = prometheus.NewDesc(
-		"taskforge_dlq_depth", "Dead-letter tasks in a queue.", []string{"queue"}, nil)
+		"qrunnr_dlq_depth", "Dead-letter tasks in a queue.", []string{"queue"}, nil)
 	heartbeatAgeDesc = prometheus.NewDesc(
-		"taskforge_worker_heartbeat_age_seconds", "Seconds since a worker was last seen.", []string{"worker_id"}, nil)
+		"qrunnr_worker_heartbeat_age_seconds", "Seconds since a worker was last seen.", []string{"worker_id"}, nil)
 )
 
 // alwaysReported are emitted (as zero when empty) for every queue that has

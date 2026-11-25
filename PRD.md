@@ -1,4 +1,4 @@
-# TaskForge — Product Requirements Document
+# qrunnr — Product Requirements Document
 
 **Version:** 1.0  
 **Status:** Draft  
@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-TaskForge is a self-hosted distributed task queue service inspired by Google Cloud Tasks. It provides a durable, observable, and configurable system for background job execution across distributed services. It exposes an HTTP API for enqueuing tasks, manages retries and scheduling, and routes work to a pool of stateless workers.
+qrunnr is a self-hosted distributed task queue service inspired by Google Cloud Tasks. It provides a durable, observable, and configurable system for background job execution across distributed services. It exposes an HTTP API for enqueuing tasks, manages retries and scheduling, and routes work to a pool of stateless workers.
 
 The primary goal is a production-grade internal tool that a small engineering team can deploy, operate, and extend without depending on a managed cloud service.
 
@@ -25,7 +25,7 @@ As a backend system scales across multiple services, the need for reliable async
 - Rate-limiting against downstream services is handled ad hoc.
 - Developers have no way to inspect, cancel, or replay failed jobs.
 
-TaskForge solves all of the above in a single deployable service.
+qrunnr solves all of the above in a single deployable service.
 
 ---
 
@@ -41,7 +41,7 @@ TaskForge solves all of the above in a single deployable service.
 
 ## 4. Non-goals
 
-- TaskForge is not a message broker (no pub/sub fan-out, no topic subscriptions).
+- qrunnr is not a message broker (no pub/sub fan-out, no topic subscriptions).
 - It does not execute tasks itself — workers are separate processes owned by the caller.
 - It does not provide a managed SaaS offering or multi-tenancy.
 - It does not guarantee exactly-once delivery in the initial version.
@@ -54,7 +54,7 @@ TaskForge solves all of the above in a single deployable service.
 | User | Description |
 |---|---|
 | Backend engineer | Enqueues tasks via the HTTP API from application services. |
-| Platform/infra engineer | Deploys and operates TaskForge; configures queues and rate limits. |
+| Platform/infra engineer | Deploys and operates qrunnr; configures queues and rate limits. |
 | On-call engineer | Uses the admin dashboard to inspect failures and replay DLQ tasks. |
 
 ---
@@ -69,7 +69,7 @@ TaskForge solves all of the above in a single deployable service.
 
 > **Design decision (2026-11):** The original design staged tasks in a Redis sorted-set buffer fed by a dispatcher and scheduler loop. v1 claims directly from Postgres instead. `SKIP LOCKED` already gives exclusive, priority-ordered claims across any number of API instances, and a second copy of task state in Redis would need dual writes and reconciliation without improving any acceptance criterion. Redis is used only for rate limiting. Revisit if claim throughput on Postgres becomes a bottleneck.
 
-**Worker pool** — Stateless worker processes external to TaskForge that poll the dispatch API, execute payloads, and report results via `ack`/`nack`.
+**Worker pool** — Stateless worker processes external to qrunnr that poll the dispatch API, execute payloads, and report results via `ack`/`nack`.
 
 **Heartbeat watchdog** — Background loop that identifies tasks whose `heartbeat_at` has not been updated within the timeout window and reclaims them.
 
@@ -275,12 +275,12 @@ Total estimated build time: **8–10 days** for a working v1.
 
 The API server exposes a `/metrics` endpoint in Prometheus format with the following metrics:
 
-- `taskforge_tasks_enqueued_total` — counter by queue
-- `taskforge_tasks_completed_total` — counter by queue and status
-- `taskforge_task_execution_duration_seconds` — histogram by queue
-- `taskforge_queue_depth` — gauge by queue and status
-- `taskforge_dlq_depth` — gauge by queue
-- `taskforge_worker_heartbeat_age_seconds` — gauge by worker ID
+- `qrunnr_tasks_enqueued_total` — counter by queue
+- `qrunnr_tasks_completed_total` — counter by queue and status
+- `qrunnr_task_execution_duration_seconds` — histogram by queue
+- `qrunnr_queue_depth` — gauge by queue and status
+- `qrunnr_dlq_depth` — gauge by queue
+- `qrunnr_worker_heartbeat_age_seconds` — gauge by worker ID
 
 Structured JSON logs are emitted for every state transition with `task_id`, `queue`, `worker_id`, `from_status`, `to_status`, and `duration_ms`.
 
@@ -303,20 +303,20 @@ services:
   postgres:
     image: postgres:15
     environment:
-      POSTGRES_DB: taskforge
+      POSTGRES_DB: qrunnr
   
   redis:
     image: redis:7-alpine
 ```
 
-Workers are separate processes deployed by the caller and configured to point at `TASKFORGE_API_URL`.
+Workers are separate processes deployed by the caller and configured to point at `QRUNNR_API_URL`.
 
 ---
 
 ## 16. Open questions
 
 - Should task payloads be encrypted at rest in Postgres for sensitive use cases?
-- Is a webhook delivery mode (TaskForge pushes to a URL rather than workers polling) in scope for v2?
+- Is a webhook delivery mode (qrunnr pushes to a URL rather than workers polling) in scope for v2?
 - Should queue configuration support per-task-type retry overrides, or only queue-level defaults?
 - What is the retention policy for completed tasks? Should there be an archival or TTL mechanism?
 

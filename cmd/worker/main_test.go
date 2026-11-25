@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"taskforge.dev/internal/model"
+	"qrunnr.dev/internal/model"
 )
 
 func TestExecuteSuccess(t *testing.T) {

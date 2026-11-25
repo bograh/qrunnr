@@ -10,14 +10,14 @@ import (
 
 	goredis "github.com/redis/go-redis/v9"
 
-	redisstore "taskforge.dev/internal/storage/redis"
+	redisstore "qrunnr.dev/internal/storage/redis"
 )
 
 func testClient(t *testing.T) *goredis.Client {
 	t.Helper()
-	url := os.Getenv("TASKFORGE_TEST_REDIS_URL")
+	url := os.Getenv("QRUNNR_TEST_REDIS_URL")
 	if url == "" {
-		t.Skip("TASKFORGE_TEST_REDIS_URL not set")
+		t.Skip("QRUNNR_TEST_REDIS_URL not set")
 	}
 	opts, err := goredis.ParseURL(url)
 	if err != nil {
