@@ -137,14 +137,14 @@ Every state transition is logged as JSON with `task_id`, `queue`, `worker_id`, `
 
 Served at `/admin/` by the API server. It is built with [templ](https://templ.guide), [htmx](https://htmx.org) and Tailwind CSS. The generated `*_templ.go` files, the compiled `app.css`, and the vendored htmx scripts are committed, so `go build` needs neither the templ CLI nor Node.
 
-- **Overview:** live queue depth, throughput, error rate, oldest pending age, DLQ depth, and worker counts, pushed over server-sent events every 2s. Also create queues, change rate limits, and delete queues.
+- **Overview:** opens with a one-sentence health verdict, then live queue depth, throughput, error rate, oldest pending age, DLQ depth, and worker counts, pushed over server-sent events every 2s. Queues needing attention sort first. You can also create queues, change rate limits, and delete queues here.
 - **Tasks:** filter by queue, status, worker, task ID, and creation time. Each task page shows the payload, result, last error, full status history and heartbeats, and lets you cancel pending tasks.
 - **Dead letters:** filter by queue and time, then replay or discard tasks one at a time or in bulk. Shows replay counts.
 - **Workers:** live list with the current task and last heartbeat. Stale workers are highlighted.
 
 Dashboard actions only accept requests sent by htmx (they must carry the `HX-Request` header), which blocks cross-site form posts. Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` before exposing the dashboard. The REST API itself has no authentication; keep it on a private network.
 
-After editing `.templ` files or Tailwind classes, run `make generate`.
+The visual system (tokens, type, component rules) is documented in [DESIGN.md](DESIGN.md). After editing `.templ` files or Tailwind classes, run `make generate`.
 
 ## Development
 

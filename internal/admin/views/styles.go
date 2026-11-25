@@ -1,30 +1,46 @@
 package views
 
-// Shared Tailwind class lists. Kept as literals so the Tailwind scanner sees
-// every class.
+// Shared Tailwind class lists for the dashboard's design system (DESIGN.md).
+// Kept as literals so the Tailwind scanner sees every class. Colours come
+// only from the locked tokens in web/admin/tailwind.css.
 const (
-	cardClass  = "rounded-lg border border-zinc-200 bg-white shadow-xs dark:border-zinc-800 dark:bg-zinc-900"
-	inputClass = "block w-full rounded-md border-0 bg-white px-2.5 py-1.5 text-sm text-zinc-900 shadow-xs ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:ring-2 focus:ring-inset focus:ring-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-700 dark:focus:ring-zinc-300"
-	// compactInputClass is inputClass without w-full, for fixed-width inline inputs.
-	compactInputClass = "block w-28 shrink-0 rounded-md border-0 bg-white px-2.5 py-1.5 text-sm text-zinc-900 shadow-xs ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:ring-2 focus:ring-inset focus:ring-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 dark:ring-zinc-700 dark:focus:ring-zinc-300"
-	labelClass        = "mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400"
-	btnPrimary        = "inline-flex items-center justify-center gap-1.5 rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white shadow-xs hover:bg-zinc-700 disabled:opacity-50 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
-	btnSecondary      = "inline-flex items-center justify-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-xs ring-1 ring-inset ring-zinc-300 hover:bg-zinc-50 disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-zinc-700 dark:hover:bg-zinc-800"
-	btnDanger         = "inline-flex items-center justify-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-sm font-medium text-red-700 shadow-xs ring-1 ring-inset ring-red-300 hover:bg-red-50 disabled:opacity-50 dark:bg-zinc-900 dark:text-red-300 dark:ring-red-400/40 dark:hover:bg-red-400/10"
-	btnSmall          = "inline-flex items-center rounded px-2 py-1 text-xs font-medium text-zinc-700 ring-1 ring-inset ring-zinc-300 hover:bg-zinc-50 dark:text-zinc-200 dark:ring-zinc-700 dark:hover:bg-zinc-800"
-	btnSmallDanger    = "inline-flex items-center rounded px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-300 hover:bg-red-50 dark:text-red-300 dark:ring-red-400/40 dark:hover:bg-red-400/10"
-	thClass           = "px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
-	thRightClass      = "px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
-	tdClass           = "px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 whitespace-nowrap"
-	tdRightClass      = "px-3 py-2 text-right text-sm tabular-nums text-zinc-700 dark:text-zinc-300 whitespace-nowrap"
-	linkClass         = "font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-900 dark:text-zinc-100 dark:decoration-zinc-600 dark:hover:decoration-zinc-200"
-	monoLinkClass     = "font-mono text-xs text-zinc-900 underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-900 dark:text-zinc-100 dark:decoration-zinc-600 dark:hover:decoration-zinc-200"
-	tableWrapClass    = "overflow-x-auto"
-	tableClass        = "min-w-full divide-y divide-zinc-200 dark:divide-zinc-800"
-	tbodyClass        = "divide-y divide-zinc-100 dark:divide-zinc-800/70"
-	mutedClass        = "text-zinc-400 dark:text-zinc-500"
-	sectionTitle      = "text-sm font-semibold text-zinc-900 dark:text-zinc-100"
-	pageTitleClass    = "text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50"
-	pageSubClass      = "mt-1 text-sm text-zinc-500 dark:text-zinc-400"
-	emptyStateClass   = "px-3 py-10 text-center text-sm text-zinc-500 dark:text-zinc-400"
+	// Surfaces: flat panels separated by rules; no shadows, square corners.
+	panelClass     = "border border-rule bg-paper"
+	panelHeadClass = "flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-rule px-4 py-2.5"
+	panelTitle     = "text-[13px] font-semibold text-ink"
+	panelMeta      = "font-mono text-[11px] text-ink-3"
+
+	pageTitleClass = "text-[22px] leading-7 font-semibold tracking-[-0.015em] text-ink"
+	pageLedeClass  = "mt-1 max-w-[70ch] text-[13px] leading-5 text-ink-2"
+
+	// Buttons: default · hover · focus-visible (global ring) · active · disabled · loading (htmx-request).
+	btnBase      = "inline-flex h-8 items-center justify-center gap-1.5 rounded-[2px] px-3 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 ease-out active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40 [&.htmx-request]:pointer-events-none [&.htmx-request]:opacity-60"
+	btnPrimary   = btnBase + " bg-ink text-paper hover:bg-ink-2"
+	btnSecondary = btnBase + " border border-rule-2 bg-paper text-ink hover:bg-paper-2"
+	btnDanger    = btnBase + " border border-fail/40 bg-paper text-fail hover:bg-fail/8"
+	btnGhost     = "inline-flex h-7 items-center rounded-[2px] px-2 text-[12px] font-medium text-ink-2 transition-colors duration-150 ease-out hover:bg-paper-3 hover:text-ink active:translate-y-px [&.htmx-request]:opacity-60"
+	btnGhostFail = "inline-flex h-7 items-center rounded-[2px] px-2 text-[12px] font-medium text-fail transition-colors duration-150 ease-out hover:bg-fail/8 active:translate-y-px [&.htmx-request]:opacity-60"
+
+	// Console-style fields: a mono prefix cell labels the control.
+	fieldClass       = "flex h-8 min-w-0 items-stretch border border-rule-2 bg-paper focus-within:border-ink-3"
+	fieldPrefixClass = "flex shrink-0 items-center border-r border-rule bg-paper-2 px-2 font-mono text-[11px] text-ink-3"
+	fieldInputClass  = "min-w-0 flex-1 bg-transparent px-2 text-[13px] text-ink outline-none placeholder:text-ink-3/70"
+	inputClass       = "h-8 w-full border border-rule-2 bg-paper px-2 text-[13px] text-ink outline-none placeholder:text-ink-3/70 focus:border-ink-3"
+	inputNumClass    = "h-8 w-24 border border-rule-2 bg-paper px-2 font-mono text-[13px] tabular-nums text-ink outline-none placeholder:font-sans placeholder:text-ink-3/70 focus:border-ink-3"
+
+	// Tables: 36px rows, tabular numerals, numbers right-aligned.
+	tableWrapClass = "overflow-x-auto"
+	tableClass     = "w-full border-collapse text-[13px]"
+	thClass        = "h-8 border-b border-rule bg-paper-2 px-3 text-left text-[12px] font-medium whitespace-nowrap text-ink-3"
+	thNumClass     = "h-8 border-b border-rule bg-paper-2 px-3 text-right text-[12px] font-medium whitespace-nowrap text-ink-3"
+	trClass        = "border-b border-rule text-ink last:border-b-0 hover:bg-paper-2"
+	tdClass        = "h-9 px-3 whitespace-nowrap"
+	tdNumClass     = "h-9 px-3 text-right font-mono text-[12.5px] whitespace-nowrap tabular-nums"
+	tdMutedClass   = "h-9 px-3 whitespace-nowrap text-ink-3"
+
+	idLinkClass   = "font-mono text-[12.5px] text-ink underline decoration-rule-2 underline-offset-[3px] hover:decoration-ink"
+	textLinkClass = "text-ink underline decoration-rule-2 underline-offset-[3px] hover:decoration-ink"
+	mutedDash     = "text-ink-3"
+	emptyClass    = "px-4 py-10 text-[13px] text-ink-2"
+	checkboxClass = "size-3.5 accent-ink"
 )

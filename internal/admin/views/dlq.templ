@@ -8,7 +8,7 @@ import (
 
 templ DLQPage(data DLQData) {
 	@Layout("Dead letters", "dlq") {
-		@PageHeader("Dead-letter queue", "Tasks that exhausted their retries. Replaying creates a fresh task with the same payload; the entry stays here as a record.")
+		@PageHeader("Dead letters", "Tasks that used up their retries. Replay creates a fresh task with the same payload and keeps this entry as a record.")
 		<form
 			id="dlq-filters"
 			action="/admin/dlq"
@@ -17,28 +17,28 @@ templ DLQPage(data DLQData) {
 			hx-target="#dlq-results"
 			hx-push-url="true"
 			hx-trigger="change, submit"
-			class={ cardClass + " grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3" }
+			class="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:w-3/4"
 		>
-			<div>
-				<label for="d-queue" class={ labelClass }>Queue</label>
-				<select id="d-queue" name="queue" class={ inputClass }>
-					<option value="">All queues</option>
+			<label class={ fieldClass }>
+				<span class={ fieldPrefixClass }>queue</span>
+				<select name="queue" class={ fieldInputClass + " font-mono" }>
+					<option value="">any</option>
 					for _, name := range data.QueueNames {
 						<option value={ name } selected?={ name == data.Form.Queue }>{ name }</option>
 					}
 				</select>
-			</div>
-			<div>
-				<label for="d-from" class={ labelClass }>Died after (UTC)</label>
-				<input id="d-from" type="datetime-local" name="from" value={ data.Form.From } class={ inputClass }/>
-			</div>
-			<div>
-				<label for="d-to" class={ labelClass }>Died before (UTC)</label>
-				<input id="d-to" type="datetime-local" name="to" value={ data.Form.To } class={ inputClass }/>
-			</div>
-			<noscript><button type="submit" class={ btnPrimary }>Filter</button></noscript>
+			</label>
+			<label class={ fieldClass }>
+				<span class={ fieldPrefixClass }>died after</span>
+				<input type="datetime-local" name="from" value={ data.Form.From } aria-label="Died after, UTC" class={ fieldInputClass + " font-mono text-[12px]" }/>
+			</label>
+			<label class={ fieldClass }>
+				<span class={ fieldPrefixClass }>before</span>
+				<input type="datetime-local" name="to" value={ data.Form.To } aria-label="Died before, UTC" class={ fieldInputClass + " font-mono text-[12px]" }/>
+			</label>
+			<noscript><button type="submit" class={ btnPrimary + " w-fit" }>Filter</button></noscript>
 		</form>
-		<section id="dlq-results" class={ cardClass }>
+		<section id="dlq-results" class={ panelClass } data-selection-scope>
 			@DLQResults(data)
 		</section>
 	}
@@ -48,20 +48,25 @@ const dlqSelection = "#dlq-results input[name='selected'], #dlq-filters, #dlq-pa
 
 templ DLQResults(data DLQData) {
 	<input type="hidden" id="dlq-page" name="page" value={ itoa(data.Form.Page) }/>
-	<div class="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-		<h2 class={ sectionTitle }>
-			Dead-letter tasks
-			if data.Form.Page > 1 {
-				<span class="font-normal text-zinc-500 dark:text-zinc-400">· page { itoa(data.Form.Page) }</span>
+	<div class={ panelHeadClass + " min-h-12" }>
+		<h2 class={ panelTitle }>
+			if len(data.Tasks) == 0 {
+				Nothing here
+			} else if data.HasNext || data.Form.Page > 1 {
+				Page { itoa(data.Form.Page) }
+			} else {
+				{ plural(len(data.Tasks), "dead task", "dead tasks") }
 			}
 		</h2>
 		if len(data.Tasks) > 0 {
-			<div class="flex gap-2">
+			<div class="flex items-center gap-3">
+				<p class="font-mono text-[11px] text-ink-3" data-selection-count aria-live="polite">none selected</p>
 				<button
 					type="button"
 					hx-post="/admin/dlq/replay"
 					hx-include={ dlqSelection }
 					hx-target="#dlq-results"
+					data-requires-selection
 					class={ btnPrimary }
 				>Replay selected</button>
 				<button
@@ -70,42 +75,38 @@ templ DLQResults(data DLQData) {
 					hx-include={ dlqSelection }
 					hx-target="#dlq-results"
 					hx-confirm="Permanently discard the selected dead-letter tasks? This cannot be undone."
+					data-requires-selection
 					class={ btnDanger }
-				>Discard selected</button>
+				>Discard</button>
 			</div>
 		}
 	</div>
 	if data.Flash.Message != "" {
-		<div class="px-4 pt-4">
+		<div class="border-b border-rule px-4 py-3">
 			@FlashMessage(data.Flash)
 		</div>
 	}
 	if len(data.Tasks) == 0 {
-		<p class={ emptyStateClass }>The dead-letter queue is empty for these filters.</p>
+		<p class={ emptyClass }>The dead-letter queue is empty for these filters. Tasks land here after their last retry fails.</p>
 	} else {
 		{{ now := time.Now().UTC() }}
 		<div class={ tableWrapClass }>
 			<table class={ tableClass }>
 				<thead>
 					<tr>
-						<th scope="col" class={ thClass + " w-8" }>
-							<input
-								type="checkbox"
-								aria-label="Select all"
-								class="size-4 rounded border-zinc-300 accent-zinc-900 dark:accent-zinc-200"
-								onchange="this.closest('table').querySelectorAll('input[name=selected]').forEach(function (c) { c.checked = this.checked }, this)"
-							/>
+						<th scope="col" class={ thClass + " w-10" }>
+							<input type="checkbox" aria-label="Select all on this page" data-select-all class={ checkboxClass }/>
 						</th>
 						<th scope="col" class={ thClass }>Task</th>
 						<th scope="col" class={ thClass }>Queue</th>
 						<th scope="col" class={ thClass }>Last error</th>
-						<th scope="col" class={ thRightClass }>Attempts</th>
+						<th scope="col" class={ thNumClass }>Tries</th>
 						<th scope="col" class={ thClass }>Died</th>
 						<th scope="col" class={ thClass }>Replays</th>
-						<th scope="col" class={ thRightClass }><span class="sr-only">Actions</span></th>
+						<th scope="col" class={ thNumClass }><span class="sr-only">Actions</span></th>
 					</tr>
 				</thead>
-				<tbody class={ tbodyClass }>
+				<tbody>
 					for _, d := range data.Tasks {
 						@dlqRow(d, now)
 					}
@@ -117,36 +118,36 @@ templ DLQResults(data DLQData) {
 }
 
 templ dlqRow(d model.DeadLetterTask, now time.Time) {
-	<tr class="hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
-		<td class={ tdClass + " w-8" }>
-			<input type="checkbox" name="selected" value={ selectedValue(d.QueueName, d.ID) } aria-label={ "Select task " + d.ID } class="size-4 rounded border-zinc-300 accent-zinc-900 dark:accent-zinc-200"/>
+	<tr class={ trClass + " has-[:checked]:bg-paper-3" }>
+		<td class={ tdClass + " w-10" }>
+			<input type="checkbox" name="selected" value={ selectedValue(d.QueueName, d.ID) } aria-label={ "Select task " + d.ID } class={ checkboxClass }/>
 		</td>
 		<td class={ tdClass }>
-			<a href={ templ.URL(taskURL(d.ID)) } class={ monoLinkClass } title={ d.ID }>{ shortID(d.ID) }</a>
+			<a href={ templ.URL(taskURL(d.ID)) } class={ idLinkClass } title={ d.ID }>{ shortID(d.ID) }</a>
 		</td>
-		<td class={ tdClass }>{ d.QueueName }</td>
-		<td class={ tdClass + " max-w-sm truncate" } title={ d.LastError }>
-			<span class="text-red-700 dark:text-red-300">{ truncate(d.LastError, 80) }</span>
+		<td class={ tdClass + " font-mono text-[12.5px]" }>{ d.QueueName }</td>
+		<td class={ tdClass + " max-w-[26rem] truncate" } title={ d.LastError }>
+			<span class="font-mono text-[12px] text-fail">{ truncate(d.LastError, 90) }</span>
 		</td>
-		<td class={ tdRightClass }>{ itoa(d.Attempts) }</td>
-		<td class={ tdClass } title={ fmtTime(d.DiedAt) }>{ relative(d.DiedAt, now) }</td>
-		<td class={ tdClass }>
+		<td class={ tdNumClass }>{ itoa(d.Attempts) }</td>
+		<td class={ tdMutedClass + " font-mono text-[12px]" } title={ fmtTime(d.DiedAt) }>{ relative(d.DiedAt, now) }</td>
+		<td class={ tdMutedClass + " font-mono text-[12px]" }>
 			if d.ReplayCount > 0 {
-				<span class="tabular-nums">{ itoa(d.ReplayCount) }×</span>
-				<span class="text-xs text-zinc-500 dark:text-zinc-400" title={ fmtTimePtr(d.ReplayedAt) }>last { relativePtr(d.ReplayedAt, now) }</span>
+				<span class="text-ink">{ itoa(d.ReplayCount) }×</span>
+				<span title={ fmtTimePtr(d.ReplayedAt) }>· { relativePtr(d.ReplayedAt, now) }</span>
 			} else {
-				<span class={ mutedClass }>never</span>
+				never
 			}
 		</td>
-		<td class={ tdRightClass }>
-			<div class="flex justify-end gap-1.5">
+		<td class={ tdNumClass }>
+			<div class="flex justify-end gap-0.5">
 				<button
 					type="button"
 					hx-post="/admin/dlq/replay"
 					hx-vals={ hxVals("selected", selectedValue(d.QueueName, d.ID)) }
 					hx-include="#dlq-filters, #dlq-page"
 					hx-target="#dlq-results"
-					class={ btnSmall }
+					class={ btnGhost }
 				>Replay</button>
 				<button
 					type="button"
@@ -155,7 +156,7 @@ templ dlqRow(d model.DeadLetterTask, now time.Time) {
 					hx-include="#dlq-filters, #dlq-page"
 					hx-target="#dlq-results"
 					hx-confirm="Permanently discard this dead-letter task?"
-					class={ btnSmallDanger }
+					class={ btnGhostFail }
 				>Discard</button>
 			</div>
 		</td>

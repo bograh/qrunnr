@@ -152,13 +152,14 @@ func isoTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 // relative renders t relative to now, e.g. "12s ago" or "in 3m".
 func relative(t time.Time, now time.Time) string {
 	d := now.Sub(t)
-	if d < 0 {
+	switch {
+	case d > -time.Second && d < time.Second:
+		return "now"
+	case d < 0:
 		return "in " + compactDuration(-d)
+	default:
+		return compactDuration(d) + " ago"
 	}
-	if d < time.Second {
-		return "just now"
-	}
-	return compactDuration(d) + " ago"
 }
 
 func relativePtr(t *time.Time, now time.Time) string {
@@ -200,21 +201,6 @@ func errorRate(done, failed int) string {
 		return "—"
 	}
 	return strconv.FormatFloat(100*float64(failed)/float64(done+failed), 'f', 1, 64) + "%"
-}
-
-func errorRateClass(done, failed int) string {
-	if done+failed == 0 {
-		return "text-zinc-400 dark:text-zinc-500"
-	}
-	rate := float64(failed) / float64(done+failed)
-	switch {
-	case rate >= 0.25:
-		return "text-red-600 dark:text-red-400 font-semibold"
-	case rate >= 0.05:
-		return "text-amber-600 dark:text-amber-400 font-medium"
-	default:
-		return "text-zinc-700 dark:text-zinc-300"
-	}
 }
 
 func rateLimitLabel(limit *int) string {
@@ -264,47 +250,6 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(r[:n-1]) + "…"
-}
-
-func statusBadgeClass(status model.TaskStatus) string {
-	base := "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset "
-	switch status {
-	case model.TaskStatusPending:
-		return base + "bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-400/10 dark:text-sky-300 dark:ring-sky-400/30"
-	case model.TaskStatusClaimed:
-		return base + "bg-indigo-50 text-indigo-700 ring-indigo-600/20 dark:bg-indigo-400/10 dark:text-indigo-300 dark:ring-indigo-400/30"
-	case model.TaskStatusExecuting:
-		return base + "bg-violet-50 text-violet-700 ring-violet-600/20 dark:bg-violet-400/10 dark:text-violet-300 dark:ring-violet-400/30"
-	case model.TaskStatusDone:
-		return base + "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-400/10 dark:text-emerald-300 dark:ring-emerald-400/30"
-	case model.TaskStatusRetry:
-		return base + "bg-amber-50 text-amber-800 ring-amber-600/25 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/30"
-	case model.TaskStatusDead:
-		return base + "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-400/10 dark:text-red-300 dark:ring-red-400/30"
-	default:
-		return base + "bg-zinc-100 text-zinc-600 ring-zinc-500/20 dark:bg-zinc-400/10 dark:text-zinc-300 dark:ring-zinc-400/20"
-	}
-}
-
-func timelineDotClass(e model.TaskEvent) string {
-	base := "absolute -left-[5px] top-1.5 size-2.5 rounded-full ring-4 ring-white dark:ring-zinc-900 "
-	if e.Kind == model.TaskEventReplay {
-		return base + "bg-sky-500"
-	}
-	switch e.ToStatus {
-	case model.TaskStatusDone:
-		return base + "bg-emerald-500"
-	case model.TaskStatusRetry:
-		return base + "bg-amber-500"
-	case model.TaskStatusDead:
-		return base + "bg-red-500"
-	case model.TaskStatusExecuting, model.TaskStatusClaimed:
-		return base + "bg-violet-500"
-	case model.TaskStatusCancelled:
-		return base + "bg-zinc-400"
-	default:
-		return base + "bg-sky-500"
-	}
 }
 
 func eventTitle(e model.TaskEvent) string {
@@ -389,20 +334,6 @@ func hxVals(kv ...string) string {
 	return string(b)
 }
 
-func navClass(active bool) string {
-	if active {
-		return "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-	}
-	return "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-200/60 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-}
-
-func flashClass(kind FlashKind) string {
-	if kind == FlashError {
-		return "rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-200"
-	}
-	return "rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200"
-}
-
 func modelStatus(s string) model.TaskStatus { return model.TaskStatus(s) }
 
 func orDash(s string) string {
@@ -417,11 +348,4 @@ func suffix(rel string) string {
 		return ""
 	}
 	return " (" + rel + ")"
-}
-
-func errorRateDetail(done, failed int) string {
-	if done+failed == 0 {
-		return "no executions in the last minute"
-	}
-	return errorRate(done, failed) + " error rate (1m)"
 }
