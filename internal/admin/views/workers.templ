@@ -1,0 +1,72 @@
+package views
+
+import (
+	"time"
+
+	"qrunnr.dev/internal/model"
+)
+
+templ WorkersPage(workers []model.WorkerStatus, now time.Time) {
+	@Layout("Workers", "workers") {
+		@PageHeader("Workers", "Workers seen in the last 60 seconds. The bar fills as a worker goes quiet; at 20 seconds it is marked stale.") {
+			@LiveIndicator()
+		}
+		<section class={ panelClass } hx-ext="sse" sse-connect="/admin/events?view=workers">
+			<div class={ tableWrapClass }>
+				<table class={ tableClass }>
+					<thead>
+						<tr>
+							<th scope="col" class={ thClass }>Worker</th>
+							<th scope="col" class={ thClass }>State</th>
+							<th scope="col" class={ thClass }>Current task</th>
+							<th scope="col" class={ thClass + " w-[32%]" }>Last seen</th>
+						</tr>
+					</thead>
+					<tbody id="worker-rows" sse-swap="workers">
+						@WorkerRows(workers, now)
+					</tbody>
+				</table>
+			</div>
+		</section>
+	}
+}
+
+templ WorkerRows(workers []model.WorkerStatus, now time.Time) {
+	if len(workers) == 0 {
+		<tr>
+			<td colspan="4" class={ emptyClass }>No workers have checked in during the last 60 seconds. Start one with <code class="font-mono text-[12px] text-ink">make worker</code>.</td>
+		</tr>
+	}
+	for _, w := range workers {
+		{{ bar, barTone := freshness(w.LastHeartbeatAt, now) }}
+		<tr class={ trClass }>
+			<td class={ tdClass }>
+				<a href={ templ.URL(taskListURL(TaskFilterForm{Worker: w.WorkerID}, 1)) } class="font-mono text-[12.5px] font-medium text-ink hover:underline hover:underline-offset-[3px]">{ w.WorkerID }</a>
+			</td>
+			<td class={ tdClass }>
+				if w.Stale {
+					<span class="inline-flex items-center gap-1.5"><span class={ markClass(toneWarn) } aria-hidden="true"></span><span class="font-mono text-[12px] text-warn">stale</span></span>
+				} else if w.CurrentTaskID != "" {
+					<span class="inline-flex items-center gap-1.5"><span class={ markClass(toneRun) } aria-hidden="true"></span><span class="font-mono text-[12px] text-run">busy</span></span>
+				} else {
+					<span class="inline-flex items-center gap-1.5"><span class={ markClass(toneMuted) } aria-hidden="true"></span><span class="font-mono text-[12px] text-ink-3">idle</span></span>
+				}
+			</td>
+			<td class={ tdClass }>
+				if w.CurrentTaskID != "" {
+					<a href={ templ.URL(taskURL(w.CurrentTaskID)) } class={ idLinkClass } title={ w.CurrentTaskID }>{ shortID(w.CurrentTaskID) }</a>
+				} else {
+					<span class={ mutedDash }>—</span>
+				}
+			</td>
+			<td class={ tdClass }>
+				<div class="flex items-center gap-3">
+					<span class="w-16 shrink-0 font-mono text-[12px] text-ink-2" title={ fmtTime(w.LastHeartbeatAt) }>{ relative(w.LastHeartbeatAt, now) }</span>
+					<span class="block h-1.5 min-w-16 flex-1 bg-paper-3" aria-hidden="true">
+						<span class={ barFillClass(barTone) } style={ bar }></span>
+					</span>
+				</div>
+			</td>
+		</tr>
+	}
+}

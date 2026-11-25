@@ -1,0 +1,195 @@
+package views
+
+import "qrunnr.dev/internal/model"
+
+templ OverviewPage(data OverviewData, queues []model.Queue, flash Flash) {
+	@Layout("Overview", "overview") {
+		<div hx-ext="sse" sse-connect="/admin/events?view=overview">
+			<div id="overview-live" sse-swap="overview" class="flex flex-col gap-6">
+				@OverviewLive(data)
+			</div>
+		</div>
+		@ManageQueues(queues, flash)
+	}
+}
+
+templ OverviewLive(data OverviewData) {
+	{{ v := data.verdict() }}
+	<section aria-labelledby="verdict" class="flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
+		<div class="min-w-0">
+			<h1 id="verdict" class="flex items-center gap-3 text-[22px] leading-7 font-semibold tracking-[-0.015em] text-ink">
+				<span class={ markClass(v.Tone) + " size-2.5" } aria-hidden="true"></span>
+				{ v.Text }
+			</h1>
+			if len(v.Details) > 0 {
+				<ul class="mt-2 flex flex-col gap-0.5 pl-[22px] text-[13px] text-ink-2">
+					for _, d := range v.Details {
+						<li>{ d }</li>
+					}
+				</ul>
+			}
+		</div>
+		<p class="flex items-center gap-2 pt-1 font-mono text-[11px] text-ink-3">
+			<span class="inline-block size-1.5 bg-ok" aria-hidden="true"></span>
+			live · <time datetime={ isoTime(data.GeneratedAt) }>{ data.GeneratedAt.Format("15:04:05") }</time>
+		</p>
+	</section>
+	{{ t := data.totals() }}
+	<dl class="grid grid-cols-2 gap-px border border-rule bg-rule sm:grid-cols-3 lg:grid-cols-5">
+		@figure("Queued", itoa(t.Depth), "pending and awaiting retry", toneMuted)
+		@figure("Executing", itoa(t.Executing), "held by workers", toneMuted)
+		@figure("Throughput", throughput(t.DoneLastMinute), "tasks/sec, last minute", toneMuted)
+		@figure("Error rate", errorRate(t.DoneLastMinute, t.FailedLastMinute), itoa(t.FailedLastMinute)+" failed, last minute", errorRateTone(t.DoneLastMinute, t.FailedLastMinute))
+		if t.StaleWorkers > 0 {
+			@figure("Workers", itoa(t.ActiveWorkers), itoa(t.StaleWorkers)+" stale", toneWarn)
+		} else {
+			@figure("Workers", itoa(t.ActiveWorkers), "seen in the last 60s", toneMuted)
+		}
+	</dl>
+	<section class={ panelClass } aria-labelledby="queues-title">
+		<div class={ panelHeadClass }>
+			<h2 id="queues-title" class={ panelTitle }>Queues</h2>
+			<p class={ panelMeta }>{ plural(len(data.Queues), "queue", "queues") } · needs attention first</p>
+		</div>
+		if len(data.Queues) == 0 {
+			<p class={ emptyClass }>Queues you create will appear here with live depth, throughput, and error rate.</p>
+		} else {
+			{{ maxDepth := data.maxDepth() }}
+			<div class={ tableWrapClass }>
+				<table class={ tableClass }>
+					<thead>
+						<tr>
+							<th scope="col" class={ thClass + " pl-4" }>Queue</th>
+							<th scope="col" class={ thClass + " w-[22%]" }>Depth</th>
+							<th scope="col" class={ thNumClass }>Executing</th>
+							<th scope="col" class={ thNumClass }>Tasks/sec</th>
+							<th scope="col" class={ thNumClass }>Errors</th>
+							<th scope="col" class={ thNumClass }>Oldest</th>
+							<th scope="col" class={ thNumClass }>Dead</th>
+							<th scope="col" class={ thNumClass }>Limit</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, q := range data.queueRows() {
+							<tr class={ trClass }>
+								<td class={ tdClass + " pl-4 " + edgeClass(q.Tone) }>
+									if q.Tone != toneOK {
+										<span class="sr-only">{ "needs attention: " }</span>
+									}
+									<a href={ templ.URL(queueTasksURL(q.Queue.Name)) } class="font-mono text-[13px] font-medium text-ink hover:underline hover:underline-offset-[3px]">{ q.Queue.Name }</a>
+								</td>
+								<td class={ tdClass }>
+									<div class="flex items-center gap-3">
+										<span class="w-10 text-right font-mono text-[12.5px] tabular-nums">{ itoa(q.Stats.Depth) }</span>
+										<span class="block h-1.5 min-w-16 flex-1 bg-paper-3" aria-hidden="true">
+											<span class="block h-full bg-ink-2" style={ pctStyle(q.Stats.Depth, maxDepth) }></span>
+										</span>
+									</div>
+								</td>
+								<td class={ tdNumClass }>{ itoa(q.Stats.ExecutingCount) }</td>
+								<td class={ tdNumClass }>{ throughput(q.Stats.DoneLastMinute) }</td>
+								<td class={ tdNumClass + " " + toneTextClass(errorRateTone(q.Stats.DoneLastMinute, q.Stats.FailedLastMinute)) }>
+									{ errorRate(q.Stats.DoneLastMinute, q.Stats.FailedLastMinute) }
+								</td>
+								<td class={ tdNumClass }>{ ageSeconds(q.Stats.OldestPendingAgeSeconds) }</td>
+								<td class={ tdNumClass }>
+									if q.Stats.DLQDepth > 0 {
+										<a href={ templ.URL(queueDLQURL(q.Queue.Name)) } class="text-fail underline decoration-fail/40 underline-offset-[3px] hover:decoration-fail">{ itoa(q.Stats.DLQDepth) }</a>
+									} else {
+										<span class={ mutedDash }>0</span>
+									}
+								</td>
+								<td class={ tdNumClass + " text-ink-2" }>{ rateLimitLabel(q.Queue.RateLimit) }</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+	</section>
+}
+
+templ figure(label string, value string, detail string, t tone) {
+	<div class="flex flex-col gap-1 bg-paper px-4 py-4 max-lg:last:col-span-2 lg:last:col-span-1">
+		<dt class="text-[12px] text-ink-3">{ label }</dt>
+		if t == toneMuted {
+			<dd class="font-mono text-[28px] leading-8 font-medium tracking-[-0.02em] tabular-nums text-ink">{ value }</dd>
+		} else {
+			<dd class={ "font-mono text-[28px] leading-8 font-medium tracking-[-0.02em] tabular-nums " + toneTextClass(t) }>{ value }</dd>
+		}
+		<dd class="text-[12px] text-ink-3">{ detail }</dd>
+	</div>
+}
+
+templ ManageQueues(queues []model.Queue, flash Flash) {
+	<section id="manage-queues" class={ panelClass } aria-labelledby="config-title">
+		<div class={ panelHeadClass }>
+			<h2 id="config-title" class={ panelTitle }>Configuration</h2>
+			<p class={ panelMeta }>rate limit changes apply on the next claim</p>
+		</div>
+		<div class="flex flex-col gap-4 p-4">
+			@FlashMessage(flash)
+			<form
+				hx-post="/admin/queues"
+				hx-target="#manage-queues"
+				hx-swap="outerHTML"
+				class="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+			>
+				<label class={ fieldClass }>
+					<span class={ fieldPrefixClass }>name</span>
+					<input name="name" required maxlength="64" pattern="[A-Za-z0-9_\-]{1,64}" placeholder="email_jobs" autocomplete="off" class={ fieldInputClass + " font-mono" }/>
+				</label>
+				<label class={ fieldClass }>
+					<span class={ fieldPrefixClass }>max retries</span>
+					<input name="max_retries" type="number" min="0" max="25" value="3" required class={ fieldInputClass + " font-mono tabular-nums" }/>
+				</label>
+				<label class={ fieldClass }>
+					<span class={ fieldPrefixClass }>tasks/sec</span>
+					<input name="rate_limit" type="number" min="1" placeholder="unlimited" class={ fieldInputClass + " font-mono tabular-nums" }/>
+				</label>
+				<button type="submit" class={ btnPrimary }>Create queue</button>
+			</form>
+		</div>
+		if len(queues) > 0 {
+			<div class={ tableWrapClass + " border-t border-rule" }>
+				<table class={ tableClass }>
+					<thead>
+						<tr>
+							<th scope="col" class={ thClass + " pl-4" }>Queue</th>
+							<th scope="col" class={ thNumClass }>Max retries</th>
+							<th scope="col" class={ thClass }>Rate limit</th>
+							<th scope="col" class={ thClass }>Created</th>
+							<th scope="col" class={ thNumClass + " pr-4" }><span class="sr-only">Actions</span></th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, q := range queues {
+							<tr class={ trClass }>
+								<td class={ tdClass + " pl-4 font-mono font-medium" }>{ q.Name }</td>
+								<td class={ tdNumClass }>{ itoa(q.MaxRetries) }</td>
+								<td class={ tdClass + " py-1" }>
+									<form hx-post={ "/admin/queues/" + q.Name + "/rate-limit" } hx-target="#manage-queues" hx-swap="outerHTML" class="flex items-center gap-1.5">
+										<label class="sr-only" for={ "rate-" + q.Name }>Rate limit for { q.Name }, tasks per second</label>
+										<input id={ "rate-" + q.Name } name="rate_limit" type="number" min="1" value={ rateLimitValue(q.RateLimit) } placeholder="unlimited" class={ inputNumClass + " h-7" }/>
+										<button type="submit" class={ btnGhost }>Save</button>
+									</form>
+								</td>
+								<td class={ tdMutedClass + " font-mono text-[12px]" }>{ fmtTime(q.CreatedAt) }</td>
+								<td class={ tdNumClass + " pr-4" }>
+									<button
+										type="button"
+										hx-delete={ "/admin/queues/" + q.Name }
+										hx-target="#manage-queues"
+										hx-swap="outerHTML"
+										hx-confirm={ "Delete queue " + q.Name + "? Its finished tasks and dead letters are removed too." }
+										class={ btnGhostFail }
+									>Delete</button>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+	</section>
+}

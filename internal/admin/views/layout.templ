@@ -1,0 +1,118 @@
+package views
+
+templ Layout(title string, active string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="color-scheme" content="light dark"/>
+			<meta name="htmx-config" content='{"defaultSwapStyle":"innerHTML","historyCacheSize":0}'/>
+			<title>{ title } · qrunnr</title>
+			<link rel="preload" href="/admin/static/fonts/ibm-plex-sans-latin-400.woff2" as="font" type="font/woff2" crossorigin/>
+			<link rel="preload" href="/admin/static/fonts/ibm-plex-mono-latin-400.woff2" as="font" type="font/woff2" crossorigin/>
+			<link rel="stylesheet" href={ asset("app.css") }/>
+			<script src={ asset("vendor/htmx.min.js") } defer></script>
+			<script src={ asset("vendor/htmx-ext-sse.js") } defer></script>
+			<script src={ asset("app.js") } defer></script>
+		</head>
+		<body class="min-h-screen bg-paper font-sans text-ink antialiased">
+			<header class="sticky top-0 z-20 border-b border-rule bg-paper">
+				<div class="mx-auto flex h-12 max-w-[1440px] items-stretch gap-6 px-4 md:px-6">
+					<a href="/admin/" class="flex shrink-0 items-center gap-2 font-mono text-[15px] font-medium tracking-[-0.02em] text-ink" aria-label="qrunnr overview">
+						@mark()
+						<span><span class="text-accent">q</span>runnr</span>
+					</a>
+					<nav class="-mb-px flex min-w-0 items-stretch gap-1 overflow-x-auto" aria-label="Main">
+						@navTab("/admin/", "Overview", active == "overview")
+						@navTab("/admin/tasks", "Tasks", active == "tasks")
+						@navTab("/admin/dlq", "Dead letters", active == "dlq")
+						@navTab("/admin/workers", "Workers", active == "workers")
+					</nav>
+					<p class="ml-auto hidden shrink-0 items-center font-mono text-[11px] text-ink-3 sm:flex">times in UTC</p>
+				</div>
+			</header>
+			<main class="mx-auto max-w-[1440px] px-4 pt-6 pb-16 md:px-6 md:pt-8">
+				<div class="flex flex-col gap-6">
+					{ children... }
+				</div>
+			</main>
+		</body>
+	</html>
+}
+
+// mark is the qrunnr glyph: three queued cells, the head one lit.
+templ mark() {
+	<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" class="shrink-0">
+		<rect x="0" y="4" width="4" height="6" class="fill-accent"></rect>
+		<rect x="5" y="4" width="4" height="6" class="fill-ink"></rect>
+		<rect x="10" y="4" width="4" height="6" class="fill-ink-3"></rect>
+	</svg>
+}
+
+templ navTab(href string, label string, active bool) {
+	if active {
+		<a href={ templ.URL(href) } aria-current="page" class="flex items-center border-b-2 border-ink px-2.5 text-[13px] font-medium whitespace-nowrap text-ink">{ label }</a>
+	} else {
+		<a href={ templ.URL(href) } class="flex items-center border-b-2 border-transparent px-2.5 text-[13px] whitespace-nowrap text-ink-3 transition-colors duration-150 ease-out hover:border-rule-2 hover:text-ink">{ label }</a>
+	}
+}
+
+templ PageHeader(title string, lede string) {
+	<div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+		<div class="min-w-0">
+			<h1 class={ pageTitleClass }>{ title }</h1>
+			if lede != "" {
+				<p class={ pageLedeClass }>{ lede }</p>
+			}
+		</div>
+		{ children... }
+	</div>
+}
+
+// LiveIndicator is a static, quiet stream marker; the timestamp inside the
+// live region shows freshness.
+templ LiveIndicator() {
+	<p class="flex items-center gap-2 font-mono text-[11px] text-ink-3">
+		<span class="inline-block size-1.5 bg-ok" aria-hidden="true"></span>
+		live
+	</p>
+}
+
+templ FlashMessage(f Flash) {
+	if f.Message != "" {
+		if f.Kind == FlashError {
+			<p class="flex items-start gap-2.5 border-l-2 border-fail bg-paper-2 px-3 py-2 text-[13px] text-ink" role="alert">
+				<span class={ markClass(flashTone(f.Kind)) + " mt-[5px]" } aria-hidden="true"></span>
+				{ f.Message }
+			</p>
+		} else {
+			<p class="flex items-start gap-2.5 border-l-2 border-ok bg-paper-2 px-3 py-2 text-[13px] text-ink" role="status">
+				<span class={ markClass(flashTone(f.Kind)) + " mt-[5px]" } aria-hidden="true"></span>
+				{ f.Message }
+			</p>
+		}
+	}
+}
+
+// StatusMark renders a task status as a square mark plus a mono label.
+templ StatusMark(status string) {
+	<span class="inline-flex items-center gap-1.5">
+		<span class={ markClass(statusTone(modelStatus(status))) } aria-hidden="true"></span>
+		<span class={ "font-mono text-[12px] " + toneTextClass(statusTone(modelStatus(status))) }>{ status }</span>
+	</span>
+}
+
+templ LiveError() {
+	@FlashMessage(Flash{Kind: FlashError, Message: "Live data is temporarily unavailable. Retrying."})
+}
+
+templ ErrorPage(title string, message string) {
+	@Layout(title, "") {
+		<div class={ panelClass + " px-6 py-10" }>
+			<h1 class={ pageTitleClass }>{ title }</h1>
+			<p class={ pageLedeClass }>{ message }</p>
+			<a href="/admin/" class={ btnSecondary + " mt-5" }>Back to overview</a>
+		</div>
+	}
+}

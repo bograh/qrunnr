@@ -1,15 +1,15 @@
-# TaskForge — Product Requirements Document
+# qrunnr — Product Requirements Document
 
 **Version:** 1.0  
 **Status:** Draft  
 **Author:** Bernard Ograh
-**Last updated:** 2026-05-20
+**Last updated:** 2026-11-25
 
 ---
 
 ## 1. Overview
 
-TaskForge is a self-hosted distributed task queue service inspired by Google Cloud Tasks. It provides a durable, observable, and configurable system for background job execution across distributed services. It exposes an HTTP API for enqueuing tasks, manages retries and scheduling, and routes work to a pool of stateless workers.
+qrunnr is a self-hosted distributed task queue service inspired by Google Cloud Tasks. It provides a durable, observable, and configurable system for background job execution across distributed services. It exposes an HTTP API for enqueuing tasks, manages retries and scheduling, and routes work to a pool of stateless workers.
 
 The primary goal is a production-grade internal tool that a small engineering team can deploy, operate, and extend without depending on a managed cloud service.
 
@@ -25,7 +25,7 @@ As a backend system scales across multiple services, the need for reliable async
 - Rate-limiting against downstream services is handled ad hoc.
 - Developers have no way to inspect, cancel, or replay failed jobs.
 
-TaskForge solves all of the above in a single deployable service.
+qrunnr solves all of the above in a single deployable service.
 
 ---
 
@@ -41,7 +41,7 @@ TaskForge solves all of the above in a single deployable service.
 
 ## 4. Non-goals
 
-- TaskForge is not a message broker (no pub/sub fan-out, no topic subscriptions).
+- qrunnr is not a message broker (no pub/sub fan-out, no topic subscriptions).
 - It does not execute tasks itself — workers are separate processes owned by the caller.
 - It does not provide a managed SaaS offering or multi-tenancy.
 - It does not guarantee exactly-once delivery in the initial version.
@@ -54,7 +54,7 @@ TaskForge solves all of the above in a single deployable service.
 | User | Description |
 |---|---|
 | Backend engineer | Enqueues tasks via the HTTP API from application services. |
-| Platform/infra engineer | Deploys and operates TaskForge; configures queues and rate limits. |
+| Platform/infra engineer | Deploys and operates qrunnr; configures queues and rate limits. |
 | On-call engineer | Uses the admin dashboard to inspect failures and replay DLQ tasks. |
 
 ---
@@ -65,11 +65,11 @@ TaskForge solves all of the above in a single deployable service.
 
 **API server** — Exposes the REST API for queue management, task enqueuing, inspection, and cancellation. Stateless; horizontally scalable.
 
-**Dispatcher** — Internal loop that moves tasks from `pending` into a Redis sorted set for fast dispatch to workers. Respects priority and rate limits.
+**Dispatch** — Workers claim work with `POST /workers/claim`. The claim atomically selects the highest-priority due task (`status IN ('pending','retry') AND scheduled_at <= now()`, ordered by priority then `scheduled_at`) with `SELECT … FOR UPDATE SKIP LOCKED`, checks the queue's rate limit, and marks the task `executing` in one transaction. Delayed and retrying tasks become claimable as soon as their `scheduled_at` passes, so no separate promotion loop is needed.
 
-**Scheduler** — Sweeps Postgres for tasks whose `scheduled_at` has passed and promotes them to the Redis working buffer. Runs on a configurable tick (default: 1 second).
+> **Design decision (2026-11):** The original design staged tasks in a Redis sorted-set buffer fed by a dispatcher and scheduler loop. v1 claims directly from Postgres instead. `SKIP LOCKED` already gives exclusive, priority-ordered claims across any number of API instances, and a second copy of task state in Redis would need dual writes and reconciliation without improving any acceptance criterion. Redis is used only for rate limiting. Revisit if claim throughput on Postgres becomes a bottleneck.
 
-**Worker pool** — Stateless worker processes external to TaskForge that poll the dispatch API, execute payloads, and report results via `ack`/`nack`.
+**Worker pool** — Stateless worker processes external to qrunnr that poll the dispatch API, execute payloads, and report results via `ack`/`nack`.
 
 **Heartbeat watchdog** — Background loop that identifies tasks whose `heartbeat_at` has not been updated within the timeout window and reclaims them.
 
@@ -80,7 +80,7 @@ TaskForge solves all of the above in a single deployable service.
 | Store | Role |
 |---|---|
 | Postgres | Durable source of truth for all tasks, queues, and DLQ entries. |
-| Redis | Hot dispatch buffer (sorted sets by priority), rate-limit counters (token bucket via Lua), scheduler working set. |
+| Redis | Per-queue rate-limit token buckets (atomic Lua script). Optional: without it, limits are enforced per API instance. |
 
 ### 6.3 Task lifecycle
 
@@ -91,7 +91,7 @@ pending → claimed → executing → done
                              ↘ timeout → retry
 ```
 
-A task is created as `pending`. The dispatcher claims it (atomically, via `SELECT FOR UPDATE SKIP LOCKED`) and assigns it to a worker. The worker begins execution and sends heartbeats. On success, it calls `ack`; on failure, `nack`. Failed tasks are rescheduled with exponential backoff until `max_retries` is exceeded, at which point they are moved to the dead-letter queue.
+A task is created as `pending`. A worker's claim takes it atomically (via `SELECT FOR UPDATE SKIP LOCKED`). The worker begins execution and sends heartbeats. On success, it calls `ack`; on failure, `nack`. Failed tasks are rescheduled with exponential backoff until `max_retries` is exceeded, at which point they are moved to the dead-letter queue.
 
 ---
 
@@ -127,6 +127,8 @@ A task is created as `pending`. The dispatcher claims it (atomically, via `SELEC
 
 Indexed on `(queue_id, status, priority, scheduled_at)`.
 
+Implementation additions: `completed_at` and `last_failed_at` (used for throughput and error-rate stats).
+
 ### `dead_letter_tasks`
 
 | Column | Type | Notes |
@@ -138,6 +140,15 @@ Indexed on `(queue_id, status, priority, scheduled_at)`.
 | `attempts` | INT | — |
 | `died_at` | TIMESTAMPTZ | — |
 | `replayed_at` | TIMESTAMPTZ | Set when manually re-enqueued |
+| `replay_count` | INT | Number of times the entry was replayed |
+
+### `workers`
+
+Last time each worker was seen (claim, heartbeat, ack, nack, or idle poll) and its current task. Shared by all API instances.
+
+### `task_events`
+
+Append-only history of status transitions and heartbeats per task, shown in the dashboard's task inspector. It survives dead-lettering and DLQ discard and is removed when the queue is deleted.
 
 ---
 
@@ -173,6 +184,8 @@ GET    /queues/:name/stats          Queue depth, throughput, error rate
 ### Worker protocol
 
 ```
+POST   /workers/claim               Claim the next task (204 when none)
+GET    /workers                     Workers seen in the last 60s
 POST   /workers/heartbeat           Extend execution lease (every 10s)
 POST   /workers/ack                 Report success + optional result
 POST   /workers/nack                Report failure + error message
@@ -220,7 +233,7 @@ Workers must send a `POST /workers/heartbeat` with their task ID every 10 second
 status = 'executing' AND heartbeat_at < now() - interval '30 seconds'
 ```
 
-These tasks are returned to `retry` status and rescheduled. The worker that was executing them will receive a rejection if it later attempts to `ack` or `nack` a task it no longer owns.
+These tasks are returned to `retry` status and rescheduled with the normal backoff; the reclaim counts as an attempt. A task that has already used its retry budget is moved to the dead-letter queue instead. The worker that was executing them will receive a rejection if it later attempts to `ack` or `nack` a task it no longer owns.
 
 Timeout threshold is configurable per deployment (default: 30 seconds).
 
@@ -228,9 +241,7 @@ Timeout threshold is configurable per deployment (default: 30 seconds).
 
 ## 12. Admin dashboard
 
-**Current implementation note:** The admin dashboard is deferred from the current v1 backend implementation. The backend exposes queue stats, DLQ, task inspection, and active worker endpoints that a dashboard can consume, but `/admin` is not currently served by the API.
-
-The dashboard is a single-page web UI served at `/admin`. It requires no separate deployment.
+The dashboard is served by the API server at `/admin` and requires no separate deployment. It is built with templ, htmx and Tailwind CSS. It can be protected with HTTP basic auth (`ADMIN_USERNAME`/`ADMIN_PASSWORD`).
 
 **Queue overview panel:** Shows all queues with live metrics — depth, tasks/sec, error rate, oldest pending task age. Updates via server-sent events.
 
@@ -254,6 +265,8 @@ The dashboard is a single-page web UI served at `/admin`. It requires no separat
 | 6 — Rate limiting | Per-queue token bucket via Redis Lua script | 1 day |
 | 7 — Admin dashboard | SSE metrics stream, task inspector, DLQ browser | 2 days |
 
+All milestones are complete. Milestones 3 and 5 were delivered with Postgres claims instead of a Redis buffer (see §6.1).
+
 Total estimated build time: **8–10 days** for a working v1.
 
 ---
@@ -262,12 +275,12 @@ Total estimated build time: **8–10 days** for a working v1.
 
 The API server exposes a `/metrics` endpoint in Prometheus format with the following metrics:
 
-- `taskforge_tasks_enqueued_total` — counter by queue
-- `taskforge_tasks_completed_total` — counter by queue and status
-- `taskforge_task_execution_duration_seconds` — histogram by queue
-- `taskforge_queue_depth` — gauge by queue and status
-- `taskforge_dlq_depth` — gauge by queue
-- `taskforge_worker_heartbeat_age_seconds` — gauge by worker ID
+- `qrunnr_tasks_enqueued_total` — counter by queue
+- `qrunnr_tasks_completed_total` — counter by queue and status
+- `qrunnr_task_execution_duration_seconds` — histogram by queue
+- `qrunnr_queue_depth` — gauge by queue and status
+- `qrunnr_dlq_depth` — gauge by queue
+- `qrunnr_worker_heartbeat_age_seconds` — gauge by worker ID
 
 Structured JSON logs are emitted for every state transition with `task_id`, `queue`, `worker_id`, `from_status`, `to_status`, and `duration_ms`.
 
@@ -290,20 +303,20 @@ services:
   postgres:
     image: postgres:15
     environment:
-      POSTGRES_DB: taskforge
+      POSTGRES_DB: qrunnr
   
   redis:
     image: redis:7-alpine
 ```
 
-Workers are separate processes deployed by the caller and configured to point at `TASKFORGE_API_URL`.
+Workers are separate processes deployed by the caller and configured to point at `QRUNNR_API_URL`.
 
 ---
 
 ## 16. Open questions
 
 - Should task payloads be encrypted at rest in Postgres for sensitive use cases?
-- Is a webhook delivery mode (TaskForge pushes to a URL rather than workers polling) in scope for v2?
+- Is a webhook delivery mode (qrunnr pushes to a URL rather than workers polling) in scope for v2?
 - Should queue configuration support per-task-type retry overrides, or only queue-level defaults?
 - What is the retention policy for completed tasks? Should there be an archival or TTL mechanism?
 

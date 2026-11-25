@@ -1,4 +1,4 @@
-FROM golang:1.25-alpine AS build
+FROM golang:1.26-alpine AS build
 
 WORKDIR /src
 
@@ -6,19 +6,19 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/taskforge ./cmd/taskforge
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/qrunnr ./cmd/qrunnr
 
 FROM alpine:3.22
 
 RUN apk add --no-cache ca-certificates \
-  && adduser -D -H -u 10001 taskforge
+  && adduser -D -H -u 10001 qrunnr
 
 WORKDIR /app
 
-COPY --from=build /out/taskforge /usr/local/bin/taskforge
+COPY --from=build /out/qrunnr /usr/local/bin/qrunnr
 
-USER taskforge
+USER qrunnr
 
 EXPOSE 8080
 
-ENTRYPOINT ["taskforge"]
+ENTRYPOINT ["qrunnr"]

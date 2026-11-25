@@ -1,0 +1,355 @@
+package views
+
+import (
+	"time"
+
+	"qrunnr.dev/internal/model"
+)
+
+templ TasksPage(data TaskListData) {
+	@Layout("Tasks", "tasks") {
+		@PageHeader("Tasks", "Every task the API knows about, newest first. Dead-lettered tasks move to Dead letters.")
+		<form
+			id="task-filters"
+			action="/admin/tasks"
+			method="get"
+			hx-get="/admin/tasks"
+			hx-target="#task-results"
+			hx-push-url="true"
+			hx-trigger="change, keyup changed delay:400ms from:input[type=search], submit"
+			class="flex flex-col gap-2"
+		>
+			<fieldset class="flex flex-wrap border border-rule-2 bg-paper-2 p-0.5 sm:w-fit">
+				<legend class="sr-only">Status</legend>
+				@statusOption("", "all", data.Form.Status == "")
+				for _, s := range queueStatuses {
+					@statusOption(string(s), string(s), data.Form.Status == string(s))
+				}
+			</fieldset>
+			<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)]">
+				<label class={ fieldClass }>
+					<span class={ fieldPrefixClass }>queue</span>
+					<select name="queue" class={ fieldInputClass + " font-mono" }>
+						<option value="">any</option>
+						for _, name := range data.QueueNames {
+							<option value={ name } selected?={ name == data.Form.Queue }>{ name }</option>
+						}
+					</select>
+				</label>
+				<label class={ fieldClass }>
+					<span class={ fieldPrefixClass }>worker</span>
+					<input type="search" name="worker" value={ data.Form.Worker } placeholder="worker id" autocomplete="off" class={ fieldInputClass + " font-mono" }/>
+				</label>
+				<label class={ fieldClass }>
+					<span class={ fieldPrefixClass }>task</span>
+					<input type="search" name="task_id" value={ data.Form.TaskID } placeholder="full task UUID" autocomplete="off" class={ fieldInputClass + " font-mono" }/>
+				</label>
+				<label class={ fieldClass }>
+					<span class={ fieldPrefixClass }>after</span>
+					<input type="datetime-local" name="from" value={ data.Form.From } aria-label="Created after, UTC" class={ fieldInputClass + " font-mono text-[12px]" }/>
+				</label>
+				<label class={ fieldClass }>
+					<span class={ fieldPrefixClass }>before</span>
+					<input type="datetime-local" name="to" value={ data.Form.To } aria-label="Created before, UTC" class={ fieldInputClass + " font-mono text-[12px]" }/>
+				</label>
+			</div>
+			<noscript><button type="submit" class={ btnPrimary + " w-fit" }>Filter</button></noscript>
+		</form>
+		<section id="task-results" class={ panelClass } aria-live="polite">
+			@TaskResults(data)
+		</section>
+	}
+}
+
+// statusOption is one segment of the status filter. The radio stays in the
+// DOM (visually hidden) so the control works with the keyboard and without
+// JavaScript.
+templ statusOption(value string, label string, checked bool) {
+	<label class="relative cursor-pointer">
+		<input type="radio" name="status" value={ value } checked?={ checked } class="peer absolute inset-0 cursor-pointer opacity-0"/>
+		<span class="flex h-7 items-center px-3 font-mono text-[12px] text-ink-3 transition-colors duration-150 ease-out peer-checked:bg-paper peer-checked:text-ink peer-checked:shadow-[0_0_0_1px_var(--color-rule-2)] peer-focus-visible:outline-2 peer-focus-visible:outline-focus hover:text-ink">{ label }</span>
+	</label>
+}
+
+templ TaskResults(data TaskListData) {
+	<div class={ panelHeadClass }>
+		<h2 class={ panelTitle }>
+			Results
+			if data.Form.Page > 1 {
+				<span class="ml-1 font-normal text-ink-3">page { itoa(data.Form.Page) }</span>
+			}
+		</h2>
+		if data.Form.active() {
+			<a href="/admin/tasks" class="font-mono text-[11px] text-ink-3 underline decoration-rule-2 underline-offset-[3px] hover:text-ink">clear filters</a>
+		}
+	</div>
+	if data.Flash.Message != "" {
+		<div class="p-4">
+			@FlashMessage(data.Flash)
+		</div>
+	} else if len(data.Tasks) == 0 {
+		<p class={ emptyClass }>No tasks match these filters.</p>
+	} else {
+		{{ now := time.Now().UTC() }}
+		<div class={ tableWrapClass }>
+			<table class={ tableClass }>
+				<thead>
+					<tr>
+						<th scope="col" class={ thClass }>Task</th>
+						<th scope="col" class={ thClass }>Queue</th>
+						<th scope="col" class={ thClass }>Status</th>
+						<th scope="col" class={ thNumClass }>Pri</th>
+						<th scope="col" class={ thNumClass }>Tries</th>
+						<th scope="col" class={ thClass }>Worker</th>
+						<th scope="col" class={ thClass }>Created</th>
+						<th scope="col" class={ thClass }>Runs at</th>
+						<th scope="col" class={ thClass }>Last error</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, t := range data.Tasks {
+						@taskRow(t, now)
+					}
+				</tbody>
+			</table>
+		</div>
+		@pager(data.Form.Page, data.HasNext, taskListURL(data.Form, data.Form.Page-1), taskListURL(data.Form, data.Form.Page+1), "#task-results")
+	}
+}
+
+templ taskRow(t model.TaskSummary, now time.Time) {
+	<tr class={ trClass }>
+		<td class={ tdClass }>
+			<a href={ templ.URL(taskURL(t.ID)) } class={ idLinkClass } title={ t.ID }>{ shortID(t.ID) }</a>
+		</td>
+		<td class={ tdClass + " font-mono text-[12.5px]" }>{ t.QueueName }</td>
+		<td class={ tdClass }>
+			@StatusMark(string(t.Status))
+		</td>
+		<td class={ tdNumClass }>{ itoa(t.Priority) }</td>
+		<td class={ tdNumClass }>{ itoa(t.Attempts) }</td>
+		<td class={ tdClass }>
+			if t.ClaimedBy != nil {
+				<a href={ templ.URL(taskListURL(TaskFilterForm{Worker: *t.ClaimedBy}, 1)) } class="font-mono text-[12px] text-ink-2 hover:text-ink hover:underline">{ *t.ClaimedBy }</a>
+			} else {
+				<span class={ mutedDash }>—</span>
+			}
+		</td>
+		<td class={ tdMutedClass + " font-mono text-[12px]" } title={ fmtTime(t.CreatedAt) }>{ relative(t.CreatedAt, now) }</td>
+		<td class={ tdMutedClass + " font-mono text-[12px]" } title={ fmtTime(t.ScheduledAt) }>
+			if t.ScheduledAt.After(now) {
+				<span class="text-warn">{ relative(t.ScheduledAt, now) }</span>
+			} else {
+				{ fmtTime(t.ScheduledAt) }
+			}
+		</td>
+		<td class={ tdClass + " max-w-[22rem] truncate" } title={ deref(t.LastError) }>
+			if t.LastError != nil {
+				<span class="font-mono text-[12px] text-fail">{ truncate(*t.LastError, 70) }</span>
+			} else {
+				<span class={ mutedDash }>—</span>
+			}
+		</td>
+	</tr>
+}
+
+templ pager(page int, hasNext bool, prevURL string, nextURL string, target string) {
+	if page > 1 || hasNext {
+		<nav class="flex items-center justify-between border-t border-rule px-4 py-2" aria-label="Pagination">
+			if page > 1 {
+				<a href={ templ.URL(prevURL) } hx-get={ prevURL } hx-target={ target } hx-push-url="true" class={ btnGhost }>← Newer</a>
+			} else {
+				<span></span>
+			}
+			<span class="font-mono text-[11px] text-ink-3">page { itoa(page) }</span>
+			if hasNext {
+				<a href={ templ.URL(nextURL) } hx-get={ nextURL } hx-target={ target } hx-push-url="true" class={ btnGhost }>Older →</a>
+			} else {
+				<span></span>
+			}
+		</nav>
+	}
+}
+
+templ TaskDetailPage(data TaskDetailData) {
+	@Layout("Task "+shortID(data.TaskID), "tasks") {
+		<nav aria-label="Breadcrumb" class="font-mono text-[12px] text-ink-3">
+			<a href="/admin/tasks" class="hover:text-ink hover:underline">tasks</a>
+			<span class="px-1.5">/</span>
+			<span class="text-ink-2">{ shortID(data.TaskID) }</span>
+		</nav>
+		<div id="task-detail" class="flex flex-col gap-6">
+			@TaskDetailBody(data)
+		</div>
+	}
+}
+
+// specRow is one line of the key/value spec sheet.
+templ specRow(label string, value string, sub string) {
+	<div class="flex items-baseline justify-between gap-4 border-b border-rule px-4 py-2 last:border-b-0">
+		<dt class="text-[12px] text-ink-3">{ label }</dt>
+		<dd class="min-w-0 text-right">
+			<span class="font-mono text-[12.5px] text-ink">{ value }</span>
+			if sub != "" {
+				<span class="ml-1.5 font-mono text-[11px] text-ink-3">{ sub }</span>
+			}
+		</dd>
+	</div>
+}
+
+templ codePanel(title string, body string, empty string) {
+	<section class={ panelClass }>
+		<h2 class={ panelHeadClass + " " + panelTitle }>{ title }</h2>
+		if body == "" {
+			<p class="px-4 py-3 text-[13px] text-ink-3">{ empty }</p>
+		} else {
+			<pre class="max-h-[28rem] overflow-auto bg-paper-2 px-4 py-3 font-mono text-[12.5px] leading-relaxed text-ink">{ body }</pre>
+		}
+	</section>
+}
+
+templ errorBlock(message string) {
+	<section class="border border-rule border-l-2 border-l-fail bg-paper">
+		<h2 class="px-4 pt-3 text-[12px] font-medium text-fail">Last error</h2>
+		<pre class="px-4 pt-1 pb-3 font-mono text-[13px] whitespace-pre-wrap text-ink">{ message }</pre>
+	</section>
+}
+
+templ TaskDetailBody(data TaskDetailData) {
+	{{ now := time.Now().UTC() }}
+	<div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+		<div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+			<h1 class="font-mono text-[18px] font-medium tracking-[-0.01em] break-all text-ink">
+				<span class="sr-only">Task </span>{ data.TaskID }
+			</h1>
+			if data.Task != nil {
+				@StatusMark(string(data.Task.Status))
+			} else if data.Dead != nil {
+				@StatusMark("dead")
+			}
+		</div>
+		<div class="flex gap-2">
+			if data.Task != nil && data.Task.Status == model.TaskStatusPending {
+				<button
+					type="button"
+					hx-post={ "/admin/tasks/" + data.Task.ID + "/cancel" }
+					hx-vals={ hxVals("queue", data.Task.QueueName) }
+					hx-target="#task-detail"
+					hx-confirm="Cancel this task? It will never be dispatched."
+					class={ btnDanger }
+				>Cancel task</button>
+			}
+			if data.Dead != nil {
+				<button type="button" hx-post="/admin/dlq/replay" hx-vals={ hxVals("selected", selectedValue(data.Dead.QueueName, data.Dead.ID)) } hx-target="#task-detail" class={ btnPrimary }>Replay</button>
+				<button type="button" hx-post="/admin/dlq/discard" hx-vals={ hxVals("selected", selectedValue(data.Dead.QueueName, data.Dead.ID)) } hx-target="#task-detail" hx-confirm="Permanently discard this dead-letter task?" class={ btnDanger }>Discard</button>
+			}
+		</div>
+	</div>
+	@FlashMessage(data.Flash)
+	if data.Task != nil {
+		{{ t := data.Task }}
+		<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+			<div class="flex min-w-0 flex-col gap-6">
+				if t.LastError != nil {
+					@errorBlock(*t.LastError)
+				}
+				@codePanel("Payload", prettyJSON(t.Payload), "Empty payload.")
+				@codePanel("Result", prettyJSON(t.Result), "No result recorded yet.")
+			</div>
+			<dl class={ panelClass + " h-fit" }>
+				<div class="flex items-baseline justify-between gap-4 border-b border-rule px-4 py-2">
+					<dt class="text-[12px] text-ink-3">Queue</dt>
+					<dd><a href={ templ.URL(queueTasksURL(t.QueueName)) } class={ idLinkClass }>{ t.QueueName }</a></dd>
+				</div>
+				@specRow("Priority", itoa(t.Priority), "")
+				@specRow("Attempts", itoa(t.Attempts), "")
+				@specRow("Worker", orDash(deref(t.ClaimedBy)), "")
+				@specRow("Created", fmtTime(t.CreatedAt), "")
+				@specRow("Runs at", fmtTime(t.ScheduledAt), relative(t.ScheduledAt, now))
+				@specRow("Claimed", fmtTimePtr(t.ClaimedAt), "")
+				@specRow("Heartbeat", fmtTimePtr(t.HeartbeatAt), relativePtr(t.HeartbeatAt, now))
+				@specRow("Completed", fmtTimePtr(t.CompletedAt), "")
+			</dl>
+		</div>
+	} else if data.Dead != nil {
+		{{ d := data.Dead }}
+		<p class="text-[13px] text-ink-2">This task used up its retries and is in the dead-letter queue. Replaying it creates a new task with the same payload.</p>
+		<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+			<div class="flex min-w-0 flex-col gap-6">
+				@errorBlock(d.LastError)
+				@codePanel("Payload", prettyJSON(d.Payload), "Empty payload.")
+			</div>
+			<dl class={ panelClass + " h-fit" }>
+				<div class="flex items-baseline justify-between gap-4 border-b border-rule px-4 py-2">
+					<dt class="text-[12px] text-ink-3">Queue</dt>
+					<dd><a href={ templ.URL(queueDLQURL(d.QueueName)) } class={ idLinkClass }>{ d.QueueName }</a></dd>
+				</div>
+				@specRow("Attempts", itoa(d.Attempts), "")
+				@specRow("Died", fmtTime(d.DiedAt), relative(d.DiedAt, now))
+				@specRow("Replays", itoa(d.ReplayCount), "")
+				@specRow("Last replayed", fmtTimePtr(d.ReplayedAt), "")
+			</dl>
+		</div>
+	} else if len(data.Events) > 0 {
+		<p class="text-[13px] text-ink-2">This task is no longer stored: it was discarded from the dead-letter queue or its queue was deleted. Its history is below.</p>
+	} else {
+		<p class={ panelClass + " " + emptyClass }>No task with this ID exists.</p>
+	}
+	if len(data.Events) > 0 {
+		@taskTimeline(data, now)
+	}
+}
+
+templ taskTimeline(data TaskDetailData, now time.Time) {
+	{{ hbs, hbTotal := data.heartbeats(200) }}
+	<section class={ panelClass } aria-labelledby="history-title">
+		<div class={ panelHeadClass }>
+			<h2 id="history-title" class={ panelTitle }>History</h2>
+			<p class={ panelMeta }>{ plural(len(data.transitions()), "event", "events") } · { plural(hbTotal, "heartbeat", "heartbeats") }</p>
+		</div>
+		<ol>
+			for _, e := range data.transitions() {
+				<li class="grid grid-cols-[9.5rem_minmax(0,1fr)] gap-x-4 border-b border-rule px-4 py-2.5 last:border-b-0 max-sm:grid-cols-1 max-sm:gap-y-1">
+					<time datetime={ isoTime(e.CreatedAt) } title={ relative(e.CreatedAt, now) } class="pt-px font-mono text-[12px] text-ink-3">{ fmtTime(e.CreatedAt) }</time>
+					<div class="min-w-0">
+						<p class="flex items-center gap-2 text-[13px] text-ink">
+							<span class={ markClass(eventTone(e)) } aria-hidden="true"></span>
+							<span class="font-medium">{ eventTitle(e) }</span>
+							if e.WorkerID != "" {
+								<span class="font-mono text-[12px] text-ink-3">{ e.WorkerID }</span>
+							}
+						</p>
+						if id := linkedTaskID(e); id != "" {
+							<p class="mt-0.5 pl-4 text-[12px] text-ink-2">
+								{ e.Message[:len(e.Message)-len(id)] }
+								<a href={ templ.URL(taskURL(id)) } class={ idLinkClass }>{ shortID(id) }</a>
+							</p>
+						} else if e.Message != "" {
+							<p class="mt-0.5 pl-4 font-mono text-[12px] break-words text-fail">{ e.Message }</p>
+						}
+					</div>
+				</li>
+			}
+		</ol>
+		if hbTotal > 0 {
+			<details class="group border-t border-rule">
+				<summary class="flex cursor-pointer list-none items-center justify-between px-4 py-2.5 text-[13px] text-ink-2 hover:bg-paper-2 [&::-webkit-details-marker]:hidden">
+					<span>Heartbeats <span class="font-mono text-[12px] text-ink-3">{ itoa(hbTotal) }</span></span>
+					<span class="font-mono text-[11px] text-ink-3 group-open:hidden">show</span>
+					<span class="hidden font-mono text-[11px] text-ink-3 group-open:inline">hide</span>
+				</summary>
+				<ul class="max-h-72 overflow-y-auto border-t border-rule bg-paper-2">
+					for _, e := range hbs {
+						<li class="flex items-center justify-between gap-3 px-4 py-1 font-mono text-[12px]">
+							<span class="text-ink-2">{ fmtTime(e.CreatedAt) }</span>
+							<span class="text-ink-3">{ e.WorkerID }</span>
+						</li>
+					}
+				</ul>
+				if hbTotal > len(hbs) {
+					<p class="border-t border-rule px-4 py-2 font-mono text-[11px] text-ink-3">showing the latest { itoa(len(hbs)) }</p>
+				}
+			</details>
+		}
+	</section>
+}

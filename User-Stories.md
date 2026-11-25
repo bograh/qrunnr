@@ -1,4 +1,4 @@
-# TaskForge — User Stories & Acceptance Criteria
+# qrunnr — User Stories & Acceptance Criteria
 
 **Version:** 1.0  
 **Status:** Draft  
@@ -12,7 +12,7 @@
 |---|---|
 | **Service** | A backend application that enqueues tasks via the HTTP API. |
 | **Worker** | A stateless process that claims, executes, and acknowledges tasks. |
-| **Operator** | An engineer who configures queues and deploys TaskForge. |
+| **Operator** | An engineer who configures queues and deploys qrunnr. |
 | **On-call engineer** | An engineer who monitors and responds to queue failures at runtime. |
 
 ---

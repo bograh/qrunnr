@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "6f8d6a37-8d3f-4ec0-92f1-5d4e9a2d0001",
-    "name": "TaskForge API",
-    "description": "Postman collection for the TaskForge queue, task, worker, DLQ, stats, and metrics API.",
+    "name": "qrunnr API",
+    "description": "Postman collection for the qrunnr queue, task, worker, DLQ, stats, and metrics API.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -434,6 +434,38 @@
               ],
               "path": [
                 "metrics"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/healthz",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "healthz"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Readiness",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/readyz",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "readyz"
               ]
             }
           }

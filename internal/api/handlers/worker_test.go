@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"taskforge.dev/internal/model"
-	"taskforge.dev/internal/storage/memory"
+	"qrunnr.dev/internal/model"
+	"qrunnr.dev/internal/storage/memory"
 )
 
 func TestWorkerClaimsTask(t *testing.T) {
@@ -259,7 +259,7 @@ func TestDoneTaskIsNotRedispatched(t *testing.T) {
 		t.Fatalf("expected ack status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
 	}
 
-	tasks, err := taskStore.ClaimPending(context.Background(), 1)
+	tasks, err := taskStore.PeekDue(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("claim pending: %v", err)
 	}

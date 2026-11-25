@@ -1,7 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Queues: named channels with config
-CREATE TABLE queues (
+CREATE TABLE IF NOT EXISTS queues (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name         TEXT UNIQUE NOT NULL,
   max_retries  INT NOT NULL DEFAULT 3,
@@ -10,12 +10,12 @@ CREATE TABLE queues (
 );
 
 -- Tasks: the unit of work
-CREATE TABLE tasks (
+CREATE TABLE IF NOT EXISTS tasks (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   queue_id       UUID REFERENCES queues(id),
   payload        JSONB NOT NULL,
   status         TEXT NOT NULL DEFAULT 'pending',
-                 -- pending | claimed | executing | done | retry | dead
+                 -- pending | claimed | executing | done | retry | dead | cancelled
   priority       INT NOT NULL DEFAULT 5,   -- 1 (high) to 10 (low)
   scheduled_at   TIMESTAMPTZ DEFAULT now(),
   claimed_at     TIMESTAMPTZ,
@@ -27,10 +27,11 @@ CREATE TABLE tasks (
   created_at     TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX ON tasks (queue_id, status, priority, scheduled_at);
+CREATE INDEX IF NOT EXISTS tasks_queue_id_status_priority_scheduled_at_idx
+  ON tasks (queue_id, status, priority, scheduled_at);
 
 -- Dead-letter: tasks that exhausted retries
-CREATE TABLE dead_letter_tasks (
+CREATE TABLE IF NOT EXISTS dead_letter_tasks (
   id          UUID PRIMARY KEY,
   queue_id    UUID,
   payload     JSONB,
