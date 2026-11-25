@@ -12,6 +12,9 @@ type QueueStore struct {
 	mu          sync.RWMutex
 	queues      map[string]model.Queue
 	activeTasks map[string]int
+	// onDelete is called with the deleted queue's ID after the queue store
+	// lock is released, so the task store can drop the queue's tasks.
+	onDelete func(queueID string)
 }
 
 func NewQueueStore() *QueueStore {
@@ -124,23 +127,28 @@ func (s *QueueStore) getByID(id string) (model.Queue, bool) {
 }
 
 func (s *QueueStore) Delete(ctx context.Context, name string) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if _, exists := s.queues[name]; !exists {
+	queue, exists := s.queues[name]
+	if !exists {
+		s.mu.Unlock()
 		return model.ErrQueueNotFound
 	}
 	if s.activeTasks[name] > 0 {
+		s.mu.Unlock()
 		return model.ErrQueueHasActiveTasks
 	}
-
 	delete(s.queues, name)
+	delete(s.activeTasks, name)
+	onDelete := s.onDelete
+	s.mu.Unlock()
+
+	if onDelete != nil {
+		onDelete(queue.ID)
+	}
 	return nil
 }
 

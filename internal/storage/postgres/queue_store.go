@@ -104,7 +104,7 @@ func (s *QueueStore) Delete(ctx context.Context, name string) error {
 	err = tx.QueryRow(ctx, `
 		SELECT count(*)
 		FROM tasks
-		WHERE queue_id = $1 AND status IN ('pending', 'claimed', 'executing')
+		WHERE queue_id = $1 AND status IN ('pending', 'claimed', 'executing', 'retry')
 	`, queueID).Scan(&activeCount)
 	if err != nil {
 		return err
@@ -113,8 +113,17 @@ func (s *QueueStore) Delete(ctx context.Context, name string) error {
 		return model.ErrQueueHasActiveTasks
 	}
 
-	if _, err := tx.Exec(ctx, `DELETE FROM queues WHERE id = $1`, queueID); err != nil {
-		return err
+	// Finished, cancelled, and dead-letter tasks belong to the queue and are
+	// removed with it; tasks.queue_id has no ON DELETE CASCADE.
+	for _, stmt := range []string{
+		`DELETE FROM task_events WHERE queue_id = $1`,
+		`DELETE FROM tasks WHERE queue_id = $1`,
+		`DELETE FROM dead_letter_tasks WHERE queue_id = $1`,
+		`DELETE FROM queues WHERE id = $1`,
+	} {
+		if _, err := tx.Exec(ctx, stmt, queueID); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }
@@ -128,6 +137,7 @@ func scanQueue(row queueScanner) (model.Queue, error) {
 	if err := row.Scan(&queue.ID, &queue.Name, &queue.MaxRetries, &queue.RateLimit, &queue.CreatedAt); err != nil {
 		return model.Queue{}, err
 	}
+	queue.CreatedAt = queue.CreatedAt.UTC()
 	return queue, nil
 }
 

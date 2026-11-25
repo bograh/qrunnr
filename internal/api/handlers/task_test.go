@@ -121,7 +121,7 @@ func TestEnqueuedTaskIsClaimableImmediately(t *testing.T) {
 
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		tasks, err := taskStore.ClaimPending(context.Background(), 1)
+		tasks, err := taskStore.PeekDue(context.Background(), 1)
 		if err != nil {
 			t.Fatalf("claim pending: %v", err)
 		}
@@ -151,7 +151,7 @@ func TestEnqueueDelayedTaskIsNotClaimableBeforeScheduledAt(t *testing.T) {
 		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, rec.Code, rec.Body.String())
 	}
 
-	tasks, err := taskStore.ClaimPending(context.Background(), 1)
+	tasks, err := taskStore.PeekDue(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("claim pending: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestEnqueuePastScheduledTaskIsClaimableImmediately(t *testing.T) {
 		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, rec.Code, rec.Body.String())
 	}
 
-	tasks, err := taskStore.ClaimPending(context.Background(), 1)
+	tasks, err := taskStore.PeekDue(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("claim pending: %v", err)
 	}
@@ -385,7 +385,7 @@ func TestHighPriorityTaskIsClaimedBeforeLowPriorityTask(t *testing.T) {
 		t.Fatalf("decode high priority response: %v", err)
 	}
 
-	tasks, err := taskStore.ClaimPending(context.Background(), 2)
+	tasks, err := taskStore.PeekDue(context.Background(), 2)
 	if err != nil {
 		t.Fatalf("claim pending: %v", err)
 	}
@@ -515,7 +515,7 @@ func TestCancelledTaskIsNotClaimable(t *testing.T) {
 		t.Fatalf("expected cancel status %d, got %d: %s", http.StatusNoContent, cancel.Code, cancel.Body.String())
 	}
 
-	tasks, err := taskStore.ClaimPending(context.Background(), 1)
+	tasks, err := taskStore.PeekDue(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("claim pending: %v", err)
 	}
