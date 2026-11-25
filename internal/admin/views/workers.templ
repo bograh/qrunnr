@@ -1,0 +1,85 @@
+package views
+
+import (
+	"time"
+
+	"taskforge.dev/internal/model"
+)
+
+templ WorkersPage(workers []model.WorkerStatus, now time.Time) {
+	@Layout("Workers", "workers") {
+		@PageHeader("Workers", "Workers seen in the last 60 seconds. A worker is stale after 20 seconds without contact.") {
+			@LiveBadge()
+		}
+		<section class={ cardClass } hx-ext="sse" sse-connect="/admin/events?view=workers">
+			<div class={ tableWrapClass }>
+				<table class={ tableClass }>
+					<thead>
+						<tr>
+							<th scope="col" class={ thClass }>Worker</th>
+							<th scope="col" class={ thClass }>State</th>
+							<th scope="col" class={ thClass }>Current task</th>
+							<th scope="col" class={ thClass }>Last heartbeat</th>
+						</tr>
+					</thead>
+					<tbody id="worker-rows" sse-swap="workers" class={ tbodyClass }>
+						@WorkerRows(workers, now)
+					</tbody>
+				</table>
+			</div>
+		</section>
+	}
+}
+
+templ WorkerRows(workers []model.WorkerStatus, now time.Time) {
+	if len(workers) == 0 {
+		<tr>
+			<td colspan="4" class={ emptyStateClass }>No workers seen in the last 60 seconds.</td>
+		</tr>
+	}
+	for _, w := range workers {
+		if w.Stale {
+			<tr class="bg-amber-50/70 dark:bg-amber-400/5">
+				<td class={ tdClass + " font-mono text-xs" }>
+					<a href={ templ.URL(taskListURL(TaskFilterForm{Worker: w.WorkerID}, 1)) } class="hover:underline">{ w.WorkerID }</a>
+				</td>
+				<td class={ tdClass }>
+					<span class="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-600/25 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/30">
+						<span class="size-1.5 rounded-full bg-amber-500"></span>
+						stale
+					</span>
+				</td>
+				@workerTaskCell(w)
+				<td class={ tdClass + " font-medium text-amber-800 dark:text-amber-300" } title={ fmtTime(w.LastHeartbeatAt) }>{ relative(w.LastHeartbeatAt, now) }</td>
+			</tr>
+		} else {
+			<tr>
+				<td class={ tdClass + " font-mono text-xs" }>
+					<a href={ templ.URL(taskListURL(TaskFilterForm{Worker: w.WorkerID}, 1)) } class="hover:underline">{ w.WorkerID }</a>
+				</td>
+				<td class={ tdClass }>
+					<span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-400/10 dark:text-emerald-300 dark:ring-emerald-400/30">
+						<span class="size-1.5 rounded-full bg-emerald-500"></span>
+						if w.CurrentTaskID != "" {
+							busy
+						} else {
+							idle
+						}
+					</span>
+				</td>
+				@workerTaskCell(w)
+				<td class={ tdClass } title={ fmtTime(w.LastHeartbeatAt) }>{ relative(w.LastHeartbeatAt, now) }</td>
+			</tr>
+		}
+	}
+}
+
+templ workerTaskCell(w model.WorkerStatus) {
+	<td class={ tdClass }>
+		if w.CurrentTaskID != "" {
+			<a href={ templ.URL(taskURL(w.CurrentTaskID)) } class={ monoLinkClass } title={ w.CurrentTaskID }>{ shortID(w.CurrentTaskID) }</a>
+		} else {
+			<span class={ mutedClass }>—</span>
+		}
+	</td>
+}

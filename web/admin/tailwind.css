@@ -1,0 +1,10 @@
+/* Source for web/admin/static/app.css. Rebuild with `make css`. */
+@import "tailwindcss" source(none);
+
+@source "../../internal/admin";
+
+@layer base {
+  html {
+    font-feature-settings: "cv11", "ss01";
+  }
+}
